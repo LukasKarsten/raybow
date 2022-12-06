@@ -1,0 +1,4 @@
+/target
+*.qoi
+perf*
+flamegraph.svg
