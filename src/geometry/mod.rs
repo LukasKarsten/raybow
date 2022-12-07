@@ -6,38 +6,41 @@ use std::{ops::Range, sync::Arc};
 pub use sphere::Sphere;
 pub use world::World;
 
-use crate::{ray::Ray, material::Material, vector::Vector};
+use crate::{material::Material, ray::Ray, vector::Vector};
 
 pub trait Geometry: Send + Sync {
     fn hit(&self, ray: Ray, t_range: Range<f64>) -> Option<Hit>;
 }
 
 pub struct Hit {
-    pub ray: Ray,
-    pub material: Arc<dyn Material>,
     pub point: Vector,
     pub normal: Vector,
+    pub ray: Ray,
+    pub front_face: bool,
     pub t: f64,
-}
-
-pub enum FaceSide {
-    Inside,
-    Outside,
+    pub material: Arc<dyn Material>,
 }
 
 impl Hit {
-    pub fn side(&self) -> FaceSide {
-        if self.ray.velocity.dot(self.normal) < 0.0 {
-            FaceSide::Outside
+    pub fn new(
+        point: Vector,
+        normal: Vector,
+        ray: Ray,
+        t: f64,
+        material: Arc<dyn Material>,
+    ) -> Self {
+        let (normal, front_face) = if ray.velocity.dot(normal) < 0.0 {
+            (normal, true)
         } else {
-            FaceSide::Inside
-        }
-    }
-
-    pub fn normal_opposite_to_ray(&self) -> Vector {
-        match self.side() {
-            FaceSide::Outside => self.normal,
-            FaceSide::Inside => -self.normal,
+            (-normal, false)
+        };
+        Self {
+            point,
+            normal,
+            ray,
+            front_face,
+            t,
+            material,
         }
     }
 }

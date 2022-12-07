@@ -1,4 +1,5 @@
 /target
+/.pgo
 *.qoi
 perf*
 flamegraph.svg

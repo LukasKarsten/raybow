@@ -94,6 +94,14 @@ impl Vector {
         }
     }
 
+    pub fn cross3(self, other: Self) -> Self {
+        let x = self.y() * other.z() - self.z() * other.y();
+        let y = self.z() * other.x() - self.x() * other.z();
+        let z = self.x() * other.y() - self.y() * other.x();
+
+        Self::from_xyzw(x, y, z, self.w())
+    }
+
     pub fn is_almost_zero(self) -> bool {
         let epsilon = 1e-8;
         unsafe {
@@ -156,6 +164,14 @@ impl Mul<Vector> for f64 {
 
     fn mul(self, rhs: Vector) -> Self::Output {
         rhs * self
+    }
+}
+
+impl Mul<Vector> for Vector {
+    type Output = Self;
+
+    fn mul(self, rhs: Vector) -> Self::Output {
+        unsafe { Self::from_simd(_mm256_mul_pd(self.to_simd(), rhs.to_simd())) }
     }
 }
 

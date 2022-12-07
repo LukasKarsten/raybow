@@ -12,7 +12,6 @@ pub struct Sphere {
 
 impl Sphere {
     pub fn new(center: Vector, radius: f64, material: Arc<dyn Material>) -> Self {
-        assert!(radius > 0.0, "radius must be greater than 0");
         Self {
             center,
             radius,
@@ -109,12 +108,12 @@ impl Geometry for Sphere {
 
         let point = ray.at(root);
 
-        Some(Hit {
-            material: Arc::clone(&self.material),
-            ray,
+        Some(Hit::new(
             point,
-            normal: (point - self.center) / self.radius,
-            t: root,
-        })
+            (point - self.center) / self.radius,
+            ray,
+            root,
+            Arc::clone(&self.material),
+        ))
     }
 }

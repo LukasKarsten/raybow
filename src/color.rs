@@ -1,5 +1,7 @@
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign};
 
+use rand::Rng;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Color {
     pub r: f64,
@@ -14,6 +16,11 @@ impl Color {
             g: g.clamp(0.0, 1.0),
             b: b.clamp(0.0, 1.0),
         }
+    }
+
+    pub fn random() -> Self {
+        let [r, g, b]: [f64; 3] = rand::thread_rng().gen();
+        Self { r, g, b }
     }
 
     pub fn to_rgb_bytes(self) -> [u8; 3] {

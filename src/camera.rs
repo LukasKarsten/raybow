@@ -1,68 +1,66 @@
+use std::f64::consts::TAU;
+
 use crate::{ray::Ray, Vector};
 
 pub struct Camera {
     origin: Vector,
-    vp_width: f64,
-    vp_height: f64,
-    focal_length: f64,
-}
-
-impl Camera {
-    pub fn new(
-        origin: Vector,
-        viewport_width: f64,
-        viewport_height: f64,
-        focal_length: f64,
-    ) -> Self {
-        Self {
-            origin,
-            vp_width: viewport_width,
-            vp_height: viewport_height,
-            focal_length,
-        }
-    }
-
-    pub fn get_ray(&self, u: f64, v: f64) -> Ray {
-        let x = (u - 0.5) * self.vp_width;
-        let y = (v - 0.5) * self.vp_height;
-        let z = -self.focal_length;
-        Ray::new(self.origin, Vector::from_xyz(x, y, z))
-    }
-}
-
-/*
-pub struct Camera {
-    origin: Point,
-    lower_left_corner: Point,
+    lower_left_corner: Vector,
     horizontal: Vector,
     vertical: Vector,
+    u: Vector,
+    v: Vector,
+    lens_radius: f64,
 }
 
 impl Camera {
     pub fn new(
-        origin: Point,
-        viewport_width: f64,
-        viewport_height: f64,
-        focal_length: f64,
+        lookfrom: Vector,
+        lookat: Vector,
+        vup: Vector,
+        vfov: f64,
+        aspect_ratio: f64,
+        aperture: f64,
+        focus_dist: f64,
     ) -> Self {
-        let horizontal = Vector::new(viewport_width, 0.0, 0.0);
-        let vertical = Vector::new(0.0, viewport_height, 0.0);
-        let lower_left_corner =
-            origin - horizontal * 0.5 - vertical * 0.5 - Vector::new(0.0, 0.0, focal_length);
+        let theta = vfov.to_radians();
+        let h = (theta / 2.0).tan();
+
+        let vp_height = 2.0 * h;
+        let vp_width = aspect_ratio * vp_height;
+
+        let w = (lookfrom - lookat).normalize_unchecked();
+        let u = vup.cross3(w).normalize_unchecked();
+        let v = w.cross3(u);
+
+        let horizontal = focus_dist * vp_width * u;
+        let vertical = focus_dist * vp_height * v;
 
         Self {
-            origin,
-            lower_left_corner,
+            origin: lookfrom,
             horizontal,
             vertical,
+            lower_left_corner: lookfrom - horizontal / 2.0 - vertical / 2.0 - focus_dist * w,
+            u,
+            v,
+            lens_radius: aperture / 2.0,
         }
     }
 
-    pub fn get_ray(&self, u: f64, v: f64) -> Ray {
+    pub fn get_ray(&self, s: f64, t: f64) -> Ray {
+        let rd = self.lens_radius * random_in_unit_disk();
+        let offset = self.u * rd.x() + self.v * rd.y();
+
         Ray::new(
-            self.origin,
-            self.lower_left_corner + u * self.horizontal + v * self.vertical - self.origin,
+            self.origin + offset,
+            self.lower_left_corner + s * self.horizontal + t * self.vertical - self.origin - offset,
         )
     }
 }
-*/
+
+fn random_in_unit_disk() -> Vector {
+    use rand::Rng;
+
+    let theta = rand::thread_rng().gen_range(0.0..TAU);
+
+    Vector::from_xyz(theta.sin(), theta.cos(), 0.0)
+}
