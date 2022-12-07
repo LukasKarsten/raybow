@@ -24,18 +24,6 @@ impl Vector {
         Self([x, y, z, w])
     }
 
-    pub fn from_distribution(
-        dist: &impl rand::distributions::Distribution<f64>,
-        rng: &mut impl rand::Rng,
-    ) -> Self {
-        Self([
-            dist.sample(rng),
-            dist.sample(rng),
-            dist.sample(rng),
-            dist.sample(rng),
-        ])
-    }
-
     pub fn x(self) -> f64 {
         self.0[0]
     }
