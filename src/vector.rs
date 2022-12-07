@@ -60,7 +60,7 @@ impl Vector {
         self.length_squared().sqrt()
     }
 
-    pub fn normalize(self) -> Self {
+    pub fn normalize_unchecked(self) -> Self {
         unsafe {
             let this = self.to_simd();
 
@@ -106,6 +106,8 @@ impl Vector {
 
             let abs = _mm256_and_pd(this, mask);
 
+            // requires unstable feature "stdsimd"
+            // let result = _mm256_cmp_pd_mask::<_CMP_LT_OQ>(abs, epsilon);
             let result = _mm256_movemask_pd(_mm256_cmp_pd::<_CMP_LT_OQ>(abs, epsilon));
 
             result == 0b1111

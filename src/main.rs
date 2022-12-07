@@ -65,7 +65,7 @@ fn ray_color_non_recursive(ray: Ray, geometry: &impl Geometry, max_bounces: u32)
                 None => return Color::from_rgb(0.0, 0.0, 0.0),
             },
             None => {
-                let unit_vel = curr_ray.velocity.normalize();
+                let unit_vel = curr_ray.velocity.normalize_unchecked();
 
                 let t = 0.5 * (unit_vel.y() + 1.0f64);
                 let top = Color::from_rgb(1.0, 1.0, 1.0);

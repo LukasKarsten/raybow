@@ -24,7 +24,8 @@ impl Material for Lambertian {
 }
 
 fn random_unit_vector() -> Vector {
-    random_in_unit_sphere().normalize()
+    // TODO: Correctly handle zero vector
+    random_in_unit_sphere().normalize_unchecked()
 }
 
 fn random_in_unit_sphere() -> Vector {
@@ -45,7 +46,7 @@ pub struct Metal {
 
 impl Material for Metal {
     fn scatter(&self, hit: &Hit) -> Option<(Ray, Color)> {
-        let reflected = reflect(hit.ray.velocity.normalize(), hit.normal_opposite_to_ray());
+        let reflected = reflect(hit.ray.velocity.normalize_unchecked(), hit.normal_opposite_to_ray());
         let scattered = Ray::new(hit.point, reflected + self.fuzz * random_in_unit_sphere());
         Some((scattered, self.albedo))
     }
