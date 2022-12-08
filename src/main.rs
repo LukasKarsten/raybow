@@ -168,21 +168,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     let mut color_sum = Color::from_rgb(0.0, 0.0, 0.0);
 
-                    /*
-                    let offset_step = 1.0 / SAMPLES_PER_PIXEL_SQRT as f64;
-                    for x_off in 0..SAMPLES_PER_PIXEL_SQRT {
-                        for y_off in 0..SAMPLES_PER_PIXEL_SQRT {
-                            let x_off = (x_off as f64 + 0.5) * offset_step;
-                            let y_off = (y_off as f64 + 0.5) * offset_step;
-
-                            let u = (x + x_off) / IMAGE_WIDTH as f64;
-                            let v = (y + y_off) / IMAGE_HEIGHT as f64;
-
-                            color_sum += ray_color(camera.get_ray(u, v), world, 50);
-                        }
-                    }
-                    */
-
                     let mut rng = rand::thread_rng();
                     for _ in 0..rays_per_pixel {
                         let u = (x + rng.gen::<f64>()) / image_width as f64;
