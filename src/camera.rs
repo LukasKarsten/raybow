@@ -59,8 +59,9 @@ impl Camera {
 
 fn random_in_unit_disk() -> Vector {
     use rand::Rng;
+    let mut rng = rand::thread_rng();
 
-    let theta = rand::thread_rng().gen_range(0.0..TAU);
+    let theta = rng.gen_range(0.0..TAU);
 
-    Vector::from_xyz(theta.sin(), theta.cos(), 0.0)
+    Vector::from_xyz(theta.sin(), theta.cos(), 0.0) * rng.gen::<f64>()
 }
