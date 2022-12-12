@@ -27,6 +27,33 @@ impl Aabb {
         maximum: Vector::ZERO,
     };
 
+    #[inline(never)]
+    pub fn intersections(ray: Ray, boxes: &[Aabb], ts: &mut [f64]) {
+        assert_eq!(boxes.len(), ts.len());
+        let len = boxes.len();
+
+        for i in 0..len {
+            let bounding_box = unsafe { boxes.get_unchecked(i) };
+            let t = unsafe { ts.get_unchecked_mut(i) };
+
+            let mut tmin: f64 = 0.0;
+            let mut tmax = *t;
+
+            for j in 0..3 {
+                let inv_d = 1.0 / ray.velocity[j];
+                let t0 = (bounding_box.minimum[j] - ray.origin[j]) * inv_d;
+                let t1 = (bounding_box.maximum[j] - ray.origin[j]) * inv_d;
+
+                tmin = tmin.max(t0).min(tmin.max(t1));
+                tmax = tmax.min(t0).max(tmax.min(t1));
+            }
+
+            if tmin <= tmax {
+                *t = tmin;
+            }
+        }
+    }
+
     pub fn hit(&self, ray: Ray, t_range: Range<f64>) -> bool {
         for a in 0..3 {
             let inv_d = 1.0 / ray.velocity[a];
