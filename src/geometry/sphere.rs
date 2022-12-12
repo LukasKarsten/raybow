@@ -2,7 +2,7 @@ use std::{ops::Range, sync::Arc};
 
 use crate::{material::Material, ray::Ray, vector::Vector};
 
-use super::{Geometry, Hit};
+use super::{Aabb, Hit, Hittable};
 
 pub struct Sphere {
     center: Vector,
@@ -20,7 +20,7 @@ impl Sphere {
     }
 }
 
-impl Geometry for Sphere {
+impl Hittable for Sphere {
     fn hit(&self, ray: Ray, t_range: Range<f64>) -> Option<Hit> {
         use std::arch::x86_64::*;
 
@@ -115,5 +115,12 @@ impl Geometry for Sphere {
             root,
             Arc::clone(&self.material),
         ))
+    }
+
+    fn bounding_box(&self) -> Aabb {
+        Aabb {
+            minimum: self.center - Vector::from_xyz(self.radius, self.radius, self.radius),
+            maximum: self.center + Vector::from_xyz(self.radius, self.radius, self.radius),
+        }
     }
 }

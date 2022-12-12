@@ -2,10 +2,10 @@ use std::ops::Range;
 
 use crate::ray::Ray;
 
-use super::{Geometry, Hit};
+use super::{Hit, Hittable};
 
 pub struct World {
-    geometries: Vec<Box<dyn Geometry>>,
+    geometries: Vec<Box<dyn Hittable>>,
 }
 
 impl World {
@@ -15,12 +15,12 @@ impl World {
         }
     }
 
-    pub fn add_geometry(&mut self, geometry: Box<dyn Geometry>) {
+    pub fn add_geometry(&mut self, geometry: Box<dyn Hittable>) {
         self.geometries.push(geometry);
     }
 }
 
-impl Geometry for World {
+impl Hittable for World {
     fn hit(&self, ray: Ray, t_range: Range<f64>) -> Option<Hit> {
         let mut nearest_hit = None;
         let mut nearest_t = t_range.end;
@@ -33,5 +33,9 @@ impl Geometry for World {
         }
 
         nearest_hit
+    }
+
+    fn bounding_box(&self) -> super::Aabb {
+        unimplemented!()
     }
 }

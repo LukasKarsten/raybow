@@ -1,6 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use clap::Parser;
+use geometry::BvhNode;
 use indicatif::ParallelProgressIterator;
 use material::Dialectric;
 use rand::Rng;
@@ -11,7 +12,7 @@ use rayon::prelude::*;
 use crate::{
     camera::Camera,
     color::Color,
-    geometry::{Geometry, Sphere, World},
+    geometry::{Hittable, Sphere},
     material::{Lambertian, Material, Metal},
     vector::Vector,
 };
@@ -35,7 +36,7 @@ struct Options {
     spheres_per_axis: u32,
 }
 
-fn ray_color_non_recursive(ray: Ray, geometry: &impl Geometry, max_bounces: u32) -> Color {
+fn ray_color_non_recursive(ray: Ray, geometry: &impl Hittable, max_bounces: u32) -> Color {
     let mut color = Color::from_rgb(1.0, 1.0, 1.0);
 
     let mut curr_ray = ray;
@@ -87,12 +88,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         dist_to_focus,
     );
 
-    let mut world = World::new();
+    let mut world = BvhNode::new();
 
     let ground: Arc<dyn Material> = Arc::new(Lambertian {
         albedo: Color::from_rgb(0.5, 0.5, 0.5),
     });
-    world.add_geometry(Box::new(Sphere::new(
+    world.push(Box::new(Sphere::new(
         Vector::from_xyz(0.0, -1000.0, 0.0),
         1000.0,
         Arc::clone(&ground),
@@ -114,22 +115,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if choose_mat < 0.8 {
                     let albedo = Color::random() * Color::random();
                     let material = Arc::new(Lambertian { albedo });
-                    world.add_geometry(Box::new(Sphere::new(center, 0.2, material)));
+                    world.push(Box::new(Sphere::new(center, 0.2, material)));
                 } else if choose_mat < 0.95 {
                     let albedo = Color::random();
                     let fuzz = rng.gen_range(0.0..0.5);
                     let material = Arc::new(Metal { albedo, fuzz });
-                    world.add_geometry(Box::new(Sphere::new(center, 0.2, material)))
+                    world.push(Box::new(Sphere::new(center, 0.2, material)))
                 } else {
                     let material = Arc::new(Dialectric { index: 1.5 });
-                    world.add_geometry(Box::new(Sphere::new(center, 0.2, material)))
+                    world.push(Box::new(Sphere::new(center, 0.2, material)))
                 }
             }
         }
     }
 
     let material1: Arc<dyn Material> = Arc::new(Dialectric { index: 1.5 });
-    world.add_geometry(Box::new(Sphere::new(
+    world.push(Box::new(Sphere::new(
         Vector::from_xyz(0.0, 1.0, 0.0),
         1.0,
         Arc::clone(&material1),
@@ -138,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let material2: Arc<dyn Material> = Arc::new(Lambertian {
         albedo: Color::from_rgb(0.4, 0.2, 0.1),
     });
-    world.add_geometry(Box::new(Sphere::new(
+    world.push(Box::new(Sphere::new(
         Vector::from_xyz(-4.0, 1.0, 0.0),
         1.0,
         Arc::clone(&material2),
@@ -148,7 +149,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         albedo: Color::from_rgb(0.7, 0.6, 0.5),
         fuzz: 0.1,
     });
-    world.add_geometry(Box::new(Sphere::new(
+    world.push(Box::new(Sphere::new(
         Vector::from_xyz(4.0, 1.0, 0.0),
         1.0,
         Arc::clone(&material3),

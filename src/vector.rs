@@ -1,7 +1,7 @@
 use std::{
     arch::x86_64::*,
     mem::MaybeUninit,
-    ops::{Add, Div, Mul, Neg, Sub},
+    ops::{Add, Div, Index, Mul, Neg, Sub},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -12,9 +12,7 @@ pub struct Vector(pub [f64; 4]);
 struct Align16<T>(T);
 
 impl Vector {
-    pub fn new_zero() -> Self {
-        Self([0.0; 4])
-    }
+    pub const ZERO: Self = Self([0.0; 4]);
 
     pub const fn from_xyz(x: f64, y: f64, z: f64) -> Self {
         Self::from_xyzw(x, y, z, 0.0)
@@ -110,6 +108,23 @@ impl Vector {
         }
     }
 
+    pub fn min(self, other: Self) -> Self {
+        unsafe { Self::from_simd(_mm256_min_pd(self.to_simd(), other.to_simd())) }
+    }
+
+    pub fn max(self, other: Self) -> Self {
+        unsafe { Self::from_simd(_mm256_max_pd(self.to_simd(), other.to_simd())) }
+    }
+
+    pub fn sum(self) -> f64 {
+        self.0.into_iter().sum()
+    }
+
+    pub fn product3(self) -> f64 {
+        let [x, y, z, _] = self.0;
+        x * y * z
+    }
+
     pub fn to_simd(&self) -> __m256d {
         unsafe { _mm256_load_pd(&self.0 as _) }
     }
@@ -180,6 +195,14 @@ impl Neg for Vector {
             let negated = _mm256_xor_pd(this, _mm256_set1_pd(-0.0));
             Self::from_simd(negated)
         }
+    }
+}
+
+impl Index<usize> for Vector {
+    type Output = f64;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
     }
 }
 
