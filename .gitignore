@@ -3,3 +3,4 @@
 *.qoi
 perf*
 flamegraph.svg
+Session.vim
