@@ -5,11 +5,19 @@ edition = "2021"
 
 [dependencies]
 rapid-qoi = "0.6.1"
-rayon = "1.6.0"
+bumpalo = "3.11.1"
+num_cpus = "1.14.0"
+
 rand = "0.8.5"
-clap = { version = "4.0.29", features = ["derive"] }
-indicatif = { version = "0.17.2", features = ["rayon"] }
+argh = { git = "https://github.com/google/argh.git", rev = "728d143e26b084f08eff74a8c6d266c2f741ba46" }
 
 [profile.release]
 lto = "fat"
 codegen-units = 1
+
+[dev-dependencies]
+criterion = "0.4.0"
+
+[[bench]]
+name = "vectors"
+harness = false

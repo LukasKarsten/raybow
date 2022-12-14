@@ -68,7 +68,7 @@ impl BvhNode {
 }
 
 impl Hittable for BvhNode {
-    fn hit(&self, ray: Ray, t_range: Range<f64>) -> Option<Hit> {
+    fn hit(&self, ray: Ray, t_range: Range<f32>) -> Option<Hit> {
         match self {
             Self::Empty => None,
             Self::Leaf(obj) => obj.hit(ray, t_range),

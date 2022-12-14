@@ -1,8 +1,8 @@
-use std::f64::consts::TAU;
+use std::f32::consts::TAU;
 
 use rand::Rng;
 
-use crate::{color::Color, geometry::Hit, ray::Ray, Vector};
+use crate::{color::Color, geometry::Hit, ray::Ray, vector::Vector};
 
 pub use dialectric::Dialectric;
 pub use lambertian::Lambertian;
@@ -22,7 +22,7 @@ fn random_unit_vector() -> Vector {
     let theta = rng.gen_range(0.0..TAU);
     let z = rng.gen_range(-1.0..1.0);
 
-    let tmp = (1.0f64 - z * z).sqrt();
+    let tmp = (1.0f32 - z * z).sqrt();
 
     let x = theta.cos() * tmp;
     let y = theta.sin() * tmp;
@@ -31,14 +31,14 @@ fn random_unit_vector() -> Vector {
 }
 
 fn random_in_unit_sphere() -> Vector {
-    random_unit_vector() * rand::thread_rng().gen::<f64>()
+    random_unit_vector() * rand::thread_rng().gen::<f32>()
 }
 
 fn reflect(v: Vector, n: Vector) -> Vector {
     v - 2.0 * v.dot(n) * n
 }
 
-fn refract(uv: Vector, n: Vector, cos_theta: f64, etai_over_etat: f64) -> Vector {
+fn refract(uv: Vector, n: Vector, cos_theta: f32, etai_over_etat: f32) -> Vector {
     let r_out_perp = etai_over_etat * (uv + cos_theta * n);
     let r_out_parallel = (-(1.0 - r_out_perp.length_squared()).abs().sqrt()) * n;
     r_out_perp + r_out_parallel

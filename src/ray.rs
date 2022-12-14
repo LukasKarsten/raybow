@@ -8,10 +8,10 @@ pub struct Ray {
 
 impl Ray {
     pub fn new(origin: Vector, velocity: Vector) -> Self {
-        Self { origin, velocity }
+        Self { origin, velocity: velocity.normalize_unchecked() }
     }
 
-    pub fn at(&self, t: f64) -> Vector {
+    pub fn at(&self, t: f32) -> Vector {
         self.origin + self.velocity * t
     }
 }

@@ -4,7 +4,7 @@ use super::{random_in_unit_sphere, reflect, Material};
 
 pub struct Metal {
     pub albedo: Color,
-    pub fuzz: f64,
+    pub fuzz: f32,
 }
 
 impl Material for Metal {

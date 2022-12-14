@@ -4,13 +4,13 @@ use rand::Rng;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Color {
-    pub r: f64,
-    pub g: f64,
-    pub b: f64,
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
 }
 
 impl Color {
-    pub fn from_rgb(r: f64, g: f64, b: f64) -> Self {
+    pub fn from_rgb(r: f32, g: f32, b: f32) -> Self {
         Self {
             r: r.clamp(0.0, 1.0),
             g: g.clamp(0.0, 1.0),
@@ -19,7 +19,7 @@ impl Color {
     }
 
     pub fn random() -> Self {
-        let [r, g, b]: [f64; 3] = rand::thread_rng().gen();
+        let [r, g, b]: [f32; 3] = rand::thread_rng().gen();
         Self { r, g, b }
     }
 
@@ -31,15 +31,15 @@ impl Color {
         [r, g, b]
     }
 
-    pub fn lerp(self, other: Color, t: f64) -> Color {
-        fn lerp_f64(start: f64, end: f64, t: f64) -> f64 {
+    pub fn lerp(self, other: Color, t: f32) -> Color {
+        fn lerp_f32(start: f32, end: f32, t: f32) -> f32 {
             start + t * (end - start)
         }
 
         Color {
-            r: lerp_f64(self.r, other.r, t),
-            g: lerp_f64(self.g, other.g, t),
-            b: lerp_f64(self.b, other.b, t),
+            r: lerp_f32(self.r, other.r, t),
+            g: lerp_f32(self.g, other.g, t),
+            b: lerp_f32(self.b, other.b, t),
         }
     }
 }
@@ -64,10 +64,10 @@ impl AddAssign<Self> for Color {
     }
 }
 
-impl Mul<f64> for Color {
+impl Mul<f32> for Color {
     type Output = Self;
 
-    fn mul(self, rhs: f64) -> Self::Output {
+    fn mul(self, rhs: f32) -> Self::Output {
         Self {
             r: self.r * rhs,
             g: self.g * rhs,
@@ -76,15 +76,15 @@ impl Mul<f64> for Color {
     }
 }
 
-impl MulAssign<f64> for Color {
-    fn mul_assign(&mut self, rhs: f64) {
+impl MulAssign<f32> for Color {
+    fn mul_assign(&mut self, rhs: f32) {
         self.r *= rhs;
         self.g *= rhs;
         self.b *= rhs;
     }
 }
 
-impl Mul<Color> for f64 {
+impl Mul<Color> for f32 {
     type Output = <Color as Mul<Self>>::Output;
 
     fn mul(self, rhs: Color) -> Self::Output {
@@ -112,10 +112,10 @@ impl MulAssign<Color> for Color {
     }
 }
 
-impl Div<f64> for Color {
+impl Div<f32> for Color {
     type Output = Self;
 
-    fn div(self, rhs: f64) -> Self::Output {
+    fn div(self, rhs: f32) -> Self::Output {
         Self {
             r: self.r / rhs,
             g: self.g / rhs,
@@ -124,8 +124,8 @@ impl Div<f64> for Color {
     }
 }
 
-impl DivAssign<f64> for Color {
-    fn div_assign(&mut self, rhs: f64) {
+impl DivAssign<f32> for Color {
+    fn div_assign(&mut self, rhs: f32) {
         self.r /= rhs;
         self.g /= rhs;
         self.b /= rhs;
