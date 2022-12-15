@@ -31,13 +31,14 @@ impl World {
         let mut nearest_hit = None;
         let mut nearest_t = f32::INFINITY;
 
-        for (i, t) in ts.into_iter().enumerate() {
-            if *t < f32::INFINITY {
-                let object = unsafe { self.objects.get_unchecked(i) };
-                if let Some(hit) = object.hit(ray, 0.0001..nearest_t) {
-                    nearest_t = hit.t;
-                    nearest_hit = Some(hit);
-                }
+        for object in ts
+            .into_iter()
+            .zip(self.objects.iter())
+            .filter_map(|(t, obj)| (*t < f32::INFINITY).then_some(obj))
+        {
+            if let Some(hit) = object.hit(ray, 0.0001..nearest_t) {
+                nearest_t = hit.t;
+                nearest_hit = Some(hit);
             }
         }
 

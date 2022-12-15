@@ -1,8 +1,6 @@
 use std::f32::consts::TAU;
 
-use rand::Rng;
-
-use crate::{color::Color, geometry::Hit, ray::Ray, vector::Vector};
+use crate::{color::Color, geometry::Hit, ray::Ray, vector::Vector, RayState, RngKey};
 
 pub use dialectric::Dialectric;
 pub use lambertian::Lambertian;
@@ -13,15 +11,12 @@ mod lambertian;
 mod metal;
 
 pub trait Material: Send + Sync {
-    fn scatter(&self, hit: &Hit) -> Option<(Ray, Color)>;
+    fn scatter(&self, hit: &Hit, state: &RayState) -> Option<(Ray, Color)>;
 }
 
-fn random_unit_vector() -> Vector {
-    // https://math.stackexchange.com/a/44691
-    let mut rng = rand::thread_rng();
-    let theta = rng.gen_range(0.0..TAU);
-    let z = rng.gen_range(-1.0..1.0);
-
+// https://math.stackexchange.com/a/44691
+fn unit_vector_from_cylinder(angle: f32, z: f32) -> Vector {
+    let theta = angle * TAU;
     let tmp = (1.0f32 - z * z).sqrt();
 
     let x = theta.cos() * tmp;
@@ -30,8 +25,14 @@ fn random_unit_vector() -> Vector {
     Vector::from_xyz(x, y, z)
 }
 
-fn random_in_unit_sphere() -> Vector {
-    random_unit_vector() * rand::thread_rng().gen::<f32>()
+fn random_unit_vector(state: &RayState, rng_key: RngKey) -> Vector {
+    let [angle, z, ..] = state.gen_random_floats(rng_key);
+    unit_vector_from_cylinder(angle, z)
+}
+
+fn random_in_unit_sphere(state: &RayState, rng_key: RngKey) -> Vector {
+    let [angle, z, len, ..] = state.gen_random_floats(rng_key);
+    unit_vector_from_cylinder(angle, z) * len
 }
 
 fn reflect(v: Vector, n: Vector) -> Vector {

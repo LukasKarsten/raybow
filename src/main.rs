@@ -1,7 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
 use argh::FromArgs;
-use rand::Rng;
 use rapid_qoi::{Colors, Qoi};
 
 use raybow::{
@@ -11,7 +10,7 @@ use raybow::{
     Camera, Color,
 };
 
-/// A toy CPU Raytracer
+/// A blazingly slow toy CPU Raytracer
 #[derive(FromArgs)]
 struct Options {
     /// width of the output image
@@ -29,6 +28,10 @@ struct Options {
     /// path to which the output should be written
     #[argh(option, short = 'o', default = "PathBuf::from(\"output.qoi\")")]
     output: PathBuf,
+
+    /// the seed
+    #[argh(option, default = "0")]
+    seed: u64,
 
     #[argh(option, hidden_help, default = "22")]
     spheres_per_axis: u32,
@@ -70,33 +73,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::clone(&ground),
     )));
 
-    let mut rng = rand::thread_rng();
-
     let num_spheres = (options.spheres_per_axis / 2) as i32;
 
     for a in -num_spheres..num_spheres {
         for b in -num_spheres..num_spheres {
-            let x = a as f32 + 0.9 * rng.gen::<f32>();
-            let z = b as f32 + 0.9 * rng.gen::<f32>();
+            let x = a as f32;
+            let z = b as f32;
             let y = (-x * x - z * z + floor_radius * floor_radius).sqrt() - floor_radius;
             let center = Vector::from_xyz(x, y + 0.2, z);
 
             if (center - Vector::from_xyz(4.0, 0.2, 0.0)).length() > 0.9 {
-                let choose_mat: f32 = rng.gen();
-
-                if choose_mat < 0.8 {
-                    let albedo = Color::random() * Color::random();
-                    let material = Arc::new(Lambertian { albedo });
-                    world.push(Box::new(Sphere::new(center, 0.2, material)));
-                } else if choose_mat < 0.95 {
-                    let albedo = Color::random();
-                    let fuzz = rng.gen_range(0.0..0.5);
-                    let material = Arc::new(Metal { albedo, fuzz });
-                    world.push(Box::new(Sphere::new(center, 0.2, material)))
-                } else {
-                    let material = Arc::new(Dialectric { index: 1.5 });
-                    world.push(Box::new(Sphere::new(center, 0.2, material)))
-                }
+                let albedo = Color::from_rgb(0.3, 0.7, 0.9);
+                let material = Arc::new(Lambertian { albedo });
+                world.push(Box::new(Sphere::new(center, 0.2, material)));
             }
         }
     }
@@ -127,7 +116,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::clone(&material3),
     )));
 
-    let pixels = raybow::render(image_width, image_height, rays_per_pixel, &camera, &world);
+    let pixels = raybow::render(
+        image_width,
+        image_height,
+        rays_per_pixel,
+        &camera,
+        &world,
+        options.seed,
+    );
 
     let qoi = Qoi {
         width: image_width,

@@ -10,7 +10,8 @@ use std::{
 };
 
 use bumpalo::Bump;
-use rand::Rng;
+
+use crate::philox::Philox4x32_10;
 
 use self::{geometry::World, ray::Ray};
 
@@ -18,20 +19,49 @@ pub use self::{camera::Camera, color::Color};
 
 mod camera;
 mod color;
+mod philox;
 mod ray;
 
 pub mod geometry;
 pub mod material;
 pub mod vector;
 
-fn ray_color(ray: Ray, geometry: &World, max_bounces: u32, arena: &mut Bump) -> Color {
+#[repr(u32)]
+enum RngKey {
+    RayPixelOffset,
+    CameraLensPosition,
+    ScatterDirection,
+    MetalFuzzDirection,
+    RefractThreshold,
+}
+
+pub struct RayState {
+    philox: Philox4x32_10,
+    pixel_x: u32,
+    pixel_y: u32,
+    ray_number: u32,
+    arena: Bump,
+}
+
+impl RayState {
+    fn arena(&mut self) -> &mut Bump {
+        &mut self.arena
+    }
+
+    fn gen_random_floats(&self, rng_key: RngKey) -> [f32; 4] {
+        let ctr = [self.pixel_x, self.pixel_y, self.ray_number, rng_key as u32];
+        self.philox.gen_f32s(ctr)
+    }
+}
+
+fn ray_color(ray: Ray, geometry: &World, max_bounces: u32, state: &mut RayState) -> Color {
     let mut color = Color::from_rgb(1.0, 1.0, 1.0);
 
     let mut curr_ray = ray;
 
     for _ in 0..max_bounces {
-        match geometry.hit(curr_ray, arena) {
-            Some(hit) => match hit.material.scatter(&hit) {
+        match geometry.hit(curr_ray, state.arena()) {
+            Some(hit) => match hit.material.scatter(&hit, state) {
                 Some((ray, attenuation)) => {
                     color *= attenuation;
                     curr_ray = ray;
@@ -58,6 +88,7 @@ pub fn render(
     rays_per_pixel: u32,
     camera: &Camera,
     world: &World,
+    seed: u64,
 ) -> Vec<u8> {
     let start_time = SystemTime::now();
 
@@ -72,9 +103,17 @@ pub fn render(
 
     thread::scope(|scope| {
         for _ in 0..cpus {
-            let mut arena = Bump::new();
             let output = &output;
             let next_pixel = &next_pixel;
+
+            let mut state = RayState {
+                philox: Philox4x32_10([(seed >> 32) as u32, seed as u32]),
+                pixel_x: 0,
+                pixel_y: 0,
+                ray_number: 0,
+                arena: Bump::new(),
+            };
+
             scope.spawn(move || loop {
                 let pixel_number = next_pixel.fetch_add(1, Ordering::Relaxed);
                 if pixel_number >= image_width * image_height {
@@ -97,17 +136,22 @@ pub fn render(
                     stdout.flush().unwrap();
                 }
 
-                let x = x as f32;
-                let y = y as f32;
-
                 let mut color_sum = Color::from_rgb(0.0, 0.0, 0.0);
 
-                let mut rng = rand::thread_rng();
-                for _ in 0..rays_per_pixel {
-                    let u = (x + rng.gen::<f32>()) / image_width as f32;
-                    let v = (y + rng.gen::<f32>()) / image_height as f32;
-                    color_sum += ray_color(camera.get_ray(u, 1.0 - v), world, 50, &mut arena);
-                    arena.reset();
+                state.pixel_x = x;
+                state.pixel_y = y;
+                for i in 0..rays_per_pixel {
+                    state.ray_number = i;
+
+                    let [x_off, y_off, ..] = state.gen_random_floats(RngKey::RayPixelOffset);
+
+                    let u = (x as f32 + x_off) / image_width as f32;
+                    let v = (y as f32 + y_off) / image_height as f32;
+                    let ray = camera.get_ray(u, 1.0 - v, &state);
+
+                    color_sum += ray_color(ray, world, 50, &mut state);
+
+                    state.arena().reset();
                 }
 
                 color_sum /= rays_per_pixel as f32;

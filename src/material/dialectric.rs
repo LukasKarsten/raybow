@@ -1,6 +1,4 @@
-use rand::Rng;
-
-use crate::{color::Color, geometry::Hit, ray::Ray};
+use crate::{color::Color, geometry::Hit, ray::Ray, RayState, RngKey};
 
 use super::{reflect, refract, Material};
 
@@ -9,7 +7,7 @@ pub struct Dialectric {
 }
 
 impl Material for Dialectric {
-    fn scatter(&self, hit: &Hit) -> Option<(Ray, Color)> {
+    fn scatter(&self, hit: &Hit, state: &RayState) -> Option<(Ray, Color)> {
         let attenuation = Color::from_rgb(1.0, 1.0, 1.0);
         let refraction_ratio = if hit.front_face {
             1.0 / self.index
@@ -22,10 +20,12 @@ impl Material for Dialectric {
         let cos_theta = (-unit_vel).dot(hit.normal).min(1.0);
         let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
 
-        let can_refract = refraction_ratio * sin_theta > 1.0
-            || reflectance(cos_theta, refraction_ratio) > rand::thread_rng().gen();
+        let [reflect_threshold, ..] = state.gen_random_floats(RngKey::RefractThreshold);
 
-        let dir = if can_refract {
+        let cannot_refract = refraction_ratio * sin_theta > 1.0
+            || reflectance(cos_theta, refraction_ratio) > reflect_threshold;
+
+        let dir = if cannot_refract {
             reflect(unit_vel, hit.normal)
         } else {
             refract(unit_vel, hit.normal, cos_theta, refraction_ratio)
