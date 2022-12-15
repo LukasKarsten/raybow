@@ -54,38 +54,6 @@ impl AabbList {
             let t0 = (bounding_box.minimum - origin) * velocity_rcp;
             let t1 = (bounding_box.maximum - origin) * velocity_rcp;
 
-            /*
-            unsafe {
-                use std::arch::x86_64::*;
-
-                let t0x = _mm256_load_ps(t0.x().as_ptr());
-                let t0y = _mm256_load_ps(t0.y().as_ptr());
-                let t0z = _mm256_load_ps(t0.z().as_ptr());
-
-                let t0min = _mm256_min_ps(_mm256_min_ps(t0x, t0y), t0z);
-                let t0max = _mm256_max_ps(_mm256_max_ps(t0x, t0y), t0z);
-
-                let t1x = _mm256_load_ps(t1.x().as_ptr());
-                let t1y = _mm256_load_ps(t1.y().as_ptr());
-                let t1z = _mm256_load_ps(t1.z().as_ptr());
-
-                let t1min = _mm256_min_ps(_mm256_min_ps(t1x, t1y), t1z);
-                let t1max = _mm256_max_ps(_mm256_max_ps(t1x, t1y), t1z);
-
-                let min = _mm256_min_ps(t0min, t1min);
-                let max = _mm256_max_ps(t0max, t1max);
-
-                let tmin = _mm256_set1_ps(0.0);
-                let tmax = _mm256_loadu_ps(t.as_ptr());
-
-                let min = _mm256_max_ps(tmin, min);
-                let max = _mm256_min_ps(tmax, max);
-
-                let cmp = _mm256_castps_si256(_mm256_cmp_ps::<_CMP_LE_OQ>(min, max));
-                _mm256_maskstore_ps(t.as_mut_ptr(), cmp, min);
-            }
-            */
-
             let mut tmin: [f32; 8] = [0.0001; 8];
             let mut tmax: [f32; 8] = t.try_into().unwrap();
 
