@@ -1,0 +1,53 @@
+Scene(
+    camera: (
+        position: (10, 2, 0),
+        lookat: (0, 1, 0),
+        vfov: 20,
+        focus_distance: 10,
+        aperture: 0.1,
+    ),
+    materials: {
+        "ground": (
+            type: "Lambertian",
+            albedo: "#7F7F7F",
+        ),
+        "1": (
+            type: "Dialectric",
+            refraction_index: 1.5,
+        ),
+        "2": (
+            type: "Lambertian",
+            albedo: "#66331A",
+        ),
+        "3": (
+            type: "Metal",
+            albedo: "#B09980",
+        )
+    },
+    objects: [
+        (
+            type: "Sphere",
+            material: "ground",
+            center: (0, -1000, 0),
+            radius: 1000,
+        ),
+        (
+            type: "Sphere",
+            material: "1",
+            center: (0, 1, 0),
+            radius: 1,
+        ),
+        (
+            type: "Sphere",
+            material: "2",
+            center: (0, 1, -2),
+            radius: 1,
+        ),
+        (
+            type: "Sphere",
+            material: "3",
+            center: (0, 1, 2),
+            radius: 1,
+        ),
+    ]
+)

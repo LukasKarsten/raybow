@@ -16,6 +16,14 @@ impl Color {
         }
     }
 
+    pub fn from_rgb_bytes(r: u8, g: u8, b: u8) -> Self {
+        Self {
+            r: (r as f32) / 255.0,
+            g: (g as f32) / 255.0,
+            b: (b as f32) / 255.0,
+        }
+    }
+
     pub fn to_rgb_bytes(self) -> [u8; 3] {
         let r: u8 = (self.r * 255.0).round() as u8;
         let g: u8 = (self.g * 255.0).round() as u8;

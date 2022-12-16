@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 argh = { git = "https://github.com/google/argh.git", rev = "728d143e26b084f08eff74a8c6d266c2f741ba46" }
 rapid-qoi = "0.6.1"
+ron = "0.8.0"
+serde = { version = "1.0.150", features = ["derive"] }
 
 bumpalo = "3.11.1"
 num_cpus = "1.14.0"

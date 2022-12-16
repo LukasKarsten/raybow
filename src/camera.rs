@@ -15,8 +15,8 @@ pub struct Camera {
 impl Camera {
     pub fn new(
         lookfrom: Vector,
-        lookat: Vector,
-        vup: Vector,
+        mut lookat: Vector,
+        mut vup: Vector,
         vfov: f32,
         aspect_ratio: f32,
         aperture: f32,
@@ -27,6 +27,13 @@ impl Camera {
 
         let vp_height = 2.0 * h;
         let vp_width = aspect_ratio * vp_height;
+
+        if (lookat - lookfrom).is_almost_zero() {
+            lookat = lookat + Vector::from_xyz(0.0, 0.0, -1.0);
+        }
+        if vup.is_almost_zero() {
+            vup = Vector::from_xyz(0.0, 1.0, 0.0);
+        }
 
         let w = (lookfrom - lookat).normalize_unchecked();
         let u = vup.cross3(w).normalize_unchecked();
