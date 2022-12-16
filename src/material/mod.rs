@@ -27,12 +27,12 @@ fn unit_vector_from_cylinder(angle: f32, z: f32) -> Vector {
 
 fn random_unit_vector(state: &RayState, rng_key: RngKey) -> Vector {
     let [angle, z, ..] = state.gen_random_floats(rng_key);
-    unit_vector_from_cylinder(angle, z)
+    unit_vector_from_cylinder(angle, -1.0 + z * 2.0)
 }
 
 fn random_in_unit_sphere(state: &RayState, rng_key: RngKey) -> Vector {
     let [angle, z, len, ..] = state.gen_random_floats(rng_key);
-    unit_vector_from_cylinder(angle, z) * len
+    unit_vector_from_cylinder(angle, -1.0 + z * 2.0) * len
 }
 
 fn reflect(v: Vector, n: Vector) -> Vector {
