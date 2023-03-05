@@ -14,26 +14,8 @@ pub enum Dimension {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[repr(C, align(32))]
+#[repr(C, align(16))]
 pub struct Vector(pub [f32; 4]);
-
-#[derive(Default)]
-#[repr(C, align(32))]
-struct Align32<T>(T);
-
-impl<T> Deref for Align32<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for Align32<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
 
 impl Vector {
     pub const ZERO: Self = Self([0.0; 4]);
