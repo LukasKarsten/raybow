@@ -2,14 +2,12 @@ use std::ops::Range;
 
 pub use aabb::{Aabb, AabbList};
 pub use sphere::Sphere;
-pub use world::World;
 
 use crate::{material::Material, ray::Ray, vector::Vector};
 
 mod aabb;
 pub mod bvh;
 mod sphere;
-mod world;
 
 pub trait Hittable: Send + Sync {
     fn hit(&self, ray: Ray, t_range: Range<f32>) -> Option<Hit>;
