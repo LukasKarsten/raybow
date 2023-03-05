@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (camera, objects) = match options.scene.as_str() {
         "builtin:spheres" => gen_scene_spheres(options.width as f32 / options.height as f32),
         _ => {
-            let scene = Scene::from_file(&Path::new(&options.scene))?;
+            let scene = Scene::from_file(Path::new(&options.scene))?;
             let camera = scene.construct_camera(options.width as f32 / options.height as f32);
             let objects = scene.construct_world();
             (camera, objects)
@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let encoded = qoi.encode_alloc(&pixels)?;
 
-    std::fs::write(options.output, &encoded)?;
+    std::fs::write(options.output, encoded)?;
 
     Ok(())
 }

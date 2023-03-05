@@ -3,7 +3,7 @@ pub struct Philox4x32_10(pub [u32; 2]);
 
 impl Philox4x32_10 {
     pub fn gen(&self, mut ctr: [u32; 4]) -> [u32; 4] {
-        let mut key = self.0.clone();
+        let mut key = self.0;
         for _ in 0..10 {
             round(&mut key, &mut ctr);
         }

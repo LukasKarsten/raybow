@@ -199,9 +199,10 @@ impl Vector {
     }
 }
 
-impl Into<[f32; 3]> for Vector {
-    fn into(self) -> [f32; 3] {
-        [self[0], self[1], self[2]]
+impl From<Vector> for [f32; 3] {
+    fn from(vec: Vector) -> Self {
+        let [x, y, z, _] = vec.0;
+        [x, y, z]
     }
 }
 

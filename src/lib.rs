@@ -173,7 +173,7 @@ pub fn render(
 
                 unsafe {
                     let off = pixel_number as usize * 3;
-                    output[off + 0].get().write(color[0]);
+                    output[off].get().write(color[0]);
                     output[off + 1].get().write(color[1]);
                     output[off + 2].get().write(color[2]);
                 }
@@ -190,7 +190,6 @@ pub fn render(
         let ptr = output.as_ptr();
         let len = output.len();
         let cap = output.capacity();
-        drop(output);
         Vec::from_raw_parts(ptr as _, len, cap)
     }
 }

@@ -118,7 +118,7 @@ impl<'a> BuildNode<'a> {
         }
     }
 
-    fn into_linear(&self, nodes: &mut Vec<LinearNode>) {
+    fn to_linear(&self, nodes: &mut Vec<LinearNode>) {
         match self.variant {
             BuildNodeVariant::Leaf {
                 objects_offset,
@@ -145,7 +145,7 @@ impl<'a> BuildNode<'a> {
                         split_dim,
                     },
                 });
-                children[0].into_linear(nodes);
+                children[0].to_linear(nodes);
                 let second_child_offset_val = nodes
                     .len()
                     .try_into()
@@ -154,7 +154,7 @@ impl<'a> BuildNode<'a> {
                     panic!("this function is such a clusterfuck");
                 };
                 *second_child_offset = second_child_offset_val;
-                children[1].into_linear(nodes);
+                children[1].to_linear(nodes);
             }
         }
     }
@@ -191,10 +191,10 @@ fn split_middle<'o>(
     }
 }
 
-fn split_equal_counts<'o>(
-    objects: &'o mut [ObjectInfo],
+fn split_equal_counts(
+    objects: &mut [ObjectInfo],
     split_dim: Dimension,
-) -> (&'o mut [ObjectInfo], &'o mut [ObjectInfo]) {
+) -> (&mut [ObjectInfo], &mut [ObjectInfo]) {
     let mid = objects.len() / 2;
 
     objects.select_nth_unstable_by(mid, |a, b| {
@@ -264,7 +264,7 @@ impl LinearTree {
         );
 
         let mut nodes = Vec::new();
-        build_node.into_linear(&mut nodes);
+        build_node.to_linear(&mut nodes);
 
         Self {
             nodes,

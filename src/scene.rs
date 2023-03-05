@@ -102,10 +102,10 @@ impl From<&MaterialDesc> for Arc<dyn Material> {
     fn from(desc: &MaterialDesc) -> Self {
         match desc {
             MaterialDesc::Lambertian { albedo } => Arc::new(Lambertian {
-                albedo: albedo.clone(),
+                albedo: *albedo,
             }),
             MaterialDesc::Metal { albedo, fuzz } => Arc::new(Metal {
-                albedo: albedo.clone(),
+                albedo: *albedo,
                 fuzz: *fuzz,
             }),
             MaterialDesc::Dialectric { refraction_index } => Arc::new(Dialectric {
@@ -166,7 +166,7 @@ impl Scene {
                     material,
                 } => {
                     let material = materials.get(material).expect("undefined material");
-                    let sphere = Sphere::new(center.clone().into(), *radius, Arc::clone(material));
+                    let sphere = Sphere::new((*center).into(), *radius, Arc::clone(material));
                     objects.push(Arc::new(sphere));
                 }
             }

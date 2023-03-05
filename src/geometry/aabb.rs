@@ -13,6 +13,7 @@ struct Aabbx8 {
     pub maximum: Vector3x8,
 }
 
+#[derive(Default)]
 pub struct AabbList {
     boxes: Vec<Aabbx8>,
     free_remaining: usize,
@@ -20,10 +21,7 @@ pub struct AabbList {
 
 impl AabbList {
     pub fn new() -> Self {
-        Self {
-            boxes: Vec::new(),
-            free_remaining: 0,
-        }
+        Self::default()
     }
 
     pub fn push(&mut self, aabb: Aabb) {
@@ -140,12 +138,10 @@ impl Aabb {
                 } else {
                     Dimension::Z
                 }
+            } else if diff.y() > diff.z() {
+                Dimension::Y
             } else {
-                if diff.y() > diff.z() {
-                    Dimension::Y
-                } else {
-                    Dimension::Z
-                }
+                Dimension::Z
             };
             Some(axis)
         }
