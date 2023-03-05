@@ -250,7 +250,7 @@ impl LinearTree {
     pub fn new(objects: Vec<Arc<dyn Hittable>>) -> Self {
         let arena = Bump::new();
 
-        let object_infos = arena.alloc_slice_fill_iter(objects.into_iter().map(ObjectInfo::new));
+        let mut object_infos: Vec<ObjectInfo> = objects.into_iter().map(ObjectInfo::new).collect();
 
         let mut ordered_objects = Vec::new();
 
@@ -258,7 +258,7 @@ impl LinearTree {
         let build_node = BuildNode::build_recursive(
             SplitMethod::Middle,
             &arena,
-            object_infos,
+            &mut object_infos,
             &mut total_nodes,
             &mut ordered_objects,
         );
