@@ -5,6 +5,14 @@ use std::{
     ops::{Add, Deref, DerefMut, Div, Index, Mul, Neg, Sub},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
+pub enum Dimension {
+    X = 0,
+    Y,
+    Z,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C, align(32))]
 pub struct Vector(pub [f32; 4]);
@@ -66,11 +74,17 @@ impl Vector {
         self / self.length()
     }
 
+    #[cfg(feature = "simd")]
     pub fn dot(self, other: Self) -> f32 {
         unsafe {
             let dp = _mm_dp_ps::<0xF1>(self.to_simd(), other.to_simd());
             f32::from_bits(_mm_extract_ps::<0>(dp) as u32)
         }
+    }
+
+    #[cfg(not(feature = "simd"))]
+    pub fn dot(self, other: Self) -> f32 {
+        self.x() * other.x() + self.y() * other.y() + self.z() * other.z() + self.w() * other.w()
     }
 
     pub fn cross3(self, other: Self) -> Self {
@@ -81,30 +95,94 @@ impl Vector {
         Self::from_xyzw(x, y, z, self.w())
     }
 
+    #[cfg(feature = "simd")]
     pub fn is_almost_zero(self) -> bool {
-        let epsilon = 1e-8;
         unsafe {
             let this = self.to_simd();
 
-            let epsilon = _mm_set1_ps(epsilon);
+            let epsilon = _mm_set1_ps(1e-8);
+            let mask = _mm_set1_ps(-0.0);
 
-            let negative1 = _mm_set1_epi32(-1);
-            let mask = _mm_castsi128_ps(_mm_srli_epi32::<1>(negative1));
-
-            let abs = _mm_and_ps(this, mask);
-
+            let abs = _mm_andnot_ps(mask, this);
             let result = _mm_movemask_ps(_mm_cmp_ps::<_CMP_LT_OQ>(abs, epsilon));
 
             result == 0b1111
         }
     }
 
+    #[cfg(not(feature = "simd"))]
+    pub fn is_almost_zero(self) -> bool {
+        self.0.into_iter().all(|v| v.abs() < 1e-8)
+    }
+
+    #[cfg(feature = "simd")]
     pub fn min(self, other: Self) -> Self {
         unsafe { Self::from_simd(_mm_min_ps(self.to_simd(), other.to_simd())) }
     }
 
+    #[cfg(not(feature = "simd"))]
+    pub fn min(self, other: Self) -> Self {
+        let x = self.x().min(other.x());
+        let y = self.y().min(other.y());
+        let z = self.z().min(other.z());
+        let w = self.w().min(other.w());
+        Self::from_xyzw(x, y, z, w)
+    }
+
+    #[cfg(feature = "simd")]
+    pub fn min_elem(self) -> f32 {
+        unsafe {
+            let wzyx = self.to_simd();
+            let yxwz = _mm_permute_ps::<0b01_00_11_10>(wzyx);
+
+            let wy_zx_wy_zx = _mm_min_ps(wzyx, yxwz);
+
+            let zx_wy_zx_wy = _mm_permute_ps::<0b10_11_00_01>(wy_zx_wy_zx);
+
+            let wzyx_min = _mm_min_ps(wy_zx_wy_zx, zx_wy_zx_wy);
+
+            f32::from_bits(_mm_extract_ps::<0>(wzyx_min) as u32)
+        }
+    }
+
+    #[cfg(not(feature = "simd"))]
+    pub fn min_elem(self) -> f32 {
+        self.x().min(self.y()).min(self.z()).min(self.w())
+    }
+
+    #[cfg(feature = "simd")]
     pub fn max(self, other: Self) -> Self {
         unsafe { Self::from_simd(_mm_max_ps(self.to_simd(), other.to_simd())) }
+    }
+
+    #[cfg(not(feature = "simd"))]
+    pub fn max(self, other: Self) -> Self {
+        let x = self.x().max(other.x());
+        let y = self.y().max(other.y());
+        let z = self.z().max(other.z());
+        let w = self.w().max(other.w());
+        Self::from_xyzw(x, y, z, w)
+    }
+
+    #[cfg(feature = "simd")]
+    pub fn max_elem(self) -> f32 {
+        unsafe {
+            let wzyx = self.to_simd();
+            let yxwz = _mm_permute_ps::<0b01_00_11_10>(wzyx);
+
+            let wy_zx_wy_zx = _mm_max_ps(wzyx, yxwz);
+
+            let zx_wy_zx_wy = _mm_permute_ps::<0b10_11_00_01>(wy_zx_wy_zx);
+
+            let wzyx_min = _mm_max_ps(wy_zx_wy_zx, zx_wy_zx_wy);
+
+            f32::from_bits(_mm_extract_ps::<0>(wzyx_min) as u32)
+        }
+    }
+
+    #[cfg(not(feature = "simd"))]
+    pub fn max_elem(self) -> f32 {
+        self.x().max(self.y()).max(self.z()).max(self.w())
     }
 
     pub fn sum(self) -> f32 {
@@ -116,8 +194,14 @@ impl Vector {
         x * y * z
     }
 
+    #[cfg(feature = "simd")]
     pub fn reciprocal(self) -> Self {
         unsafe { Self::from_simd(_mm_rcp_ps(self.to_simd())) }
+    }
+
+    #[cfg(not(feature = "simd"))]
+    pub fn reciprocal(self) -> Self {
+        Self(self.0.map(|v| 1.0 / v))
     }
 
     pub fn to_simd(&self) -> __m128 {
@@ -126,8 +210,8 @@ impl Vector {
 
     pub fn from_simd(vec: __m128) -> Self {
         unsafe {
-            let data = MaybeUninit::uninit();
-            _mm_store_ps(data.as_ptr() as _, vec);
+            let mut data = MaybeUninit::uninit();
+            _mm_store_ps(data.as_mut_ptr() as _, vec);
             data.assume_init()
         }
     }
@@ -216,6 +300,14 @@ impl Index<usize> for Vector {
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
+    }
+}
+
+impl Index<Dimension> for Vector {
+    type Output = f32;
+
+    fn index(&self, index: Dimension) -> &Self::Output {
+        &self.0[usize::from(index as u8)]
     }
 }
 
@@ -309,6 +401,7 @@ impl Vector3x8 {
 
         let mut result = Self::default();
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..8 {
             result.x[i] = self.x[i] / mag[i];
             result.y[i] = self.y[i] / mag[i];

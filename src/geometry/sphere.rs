@@ -53,7 +53,7 @@ impl Hittable for Sphere {
             (point - self.center) / self.radius,
             ray,
             t,
-            Arc::clone(&self.material),
+            &*self.material,
         ))
     }
 

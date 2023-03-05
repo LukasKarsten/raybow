@@ -1,19 +1,23 @@
-#![feature(sync_unsafe_cell)]
+#![feature(sync_unsafe_cell, core_intrinsics)]
 
 use std::{
     cell::SyncUnsafeCell,
     io::Write,
     mem::ManuallyDrop,
-    sync::atomic::{AtomicU32, Ordering},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
     thread,
     time::{Duration, SystemTime},
 };
 
 use bumpalo::Bump;
+use geometry::Hittable;
 
-use crate::philox::Philox4x32_10;
+use crate::{geometry::bvh::LinearTree, philox::Philox4x32_10};
 
-use self::{geometry::World, ray::Ray};
+use self::ray::Ray;
 
 pub use self::{camera::Camera, color::Color};
 
@@ -54,13 +58,13 @@ impl RayState {
     }
 }
 
-fn ray_color(ray: Ray, geometry: &World, max_bounces: u32, state: &mut RayState) -> Color {
+fn ray_color(ray: Ray, bvh: &LinearTree, max_bounces: u32, state: &mut RayState) -> Color {
     let mut color = Color::from_rgb(1.0, 1.0, 1.0);
 
     let mut curr_ray = ray;
 
     for _ in 0..max_bounces {
-        match geometry.hit(curr_ray, state.arena()) {
+        match bvh.hit(curr_ray, state.arena()) {
             Some(hit) => match hit.material.scatter(&hit, state) {
                 Some((ray, attenuation)) => {
                     color *= attenuation;
@@ -87,14 +91,17 @@ pub fn render(
     image_height: u32,
     rays_per_pixel: u32,
     camera: &Camera,
-    world: &World,
+    objects: Vec<Arc<dyn Hittable>>,
     seed: u64,
 ) -> Vec<u8> {
     let start_time = SystemTime::now();
 
+    let bvh = LinearTree::new(objects);
+
     let cpus = num_cpus::get();
 
     let next_pixel = AtomicU32::new(0);
+    //let finished_pixels = AtomicU32::new(0);
     let output: ManuallyDrop<Vec<SyncUnsafeCell<u8>>> = ManuallyDrop::new(
         std::iter::repeat_with(|| SyncUnsafeCell::new(0))
             .take(image_width as usize * image_height as usize * 3)
@@ -105,6 +112,7 @@ pub fn render(
         for _ in 0..cpus {
             let output = &output;
             let next_pixel = &next_pixel;
+            let bvh = &bvh;
 
             let mut state = RayState {
                 philox: Philox4x32_10([(seed >> 32) as u32, seed as u32]),
@@ -149,7 +157,7 @@ pub fn render(
                     let v = (y as f32 + y_off) / image_height as f32;
                     let ray = camera.get_ray(u, 1.0 - v, &state);
 
-                    color_sum += ray_color(ray, world, 50, &mut state);
+                    color_sum += ray_color(ray, bvh, 50, &mut state);
 
                     state.arena().reset();
                 }

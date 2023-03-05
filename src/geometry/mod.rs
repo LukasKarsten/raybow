@@ -1,14 +1,13 @@
-use std::{ops::Range, sync::Arc};
+use std::ops::Range;
 
 pub use aabb::{Aabb, AabbList};
-pub use bvh::BvhNode;
 pub use sphere::Sphere;
 pub use world::World;
 
 use crate::{material::Material, ray::Ray, vector::Vector};
 
 mod aabb;
-mod bvh;
+pub mod bvh;
 mod sphere;
 mod world;
 
@@ -17,22 +16,22 @@ pub trait Hittable: Send + Sync {
     fn bounding_box(&self) -> Aabb;
 }
 
-pub struct Hit {
+pub struct Hit<'m> {
     pub point: Vector,
     pub normal: Vector,
     pub ray: Ray,
     pub front_face: bool,
     pub t: f32,
-    pub material: Arc<dyn Material>,
+    pub material: &'m dyn Material,
 }
 
-impl Hit {
+impl<'m> Hit<'m> {
     pub fn new(
         point: Vector,
         normal: Vector,
         ray: Ray,
         t: f32,
-        material: Arc<dyn Material>,
+        material: &'m dyn Material,
     ) -> Self {
         let (normal, front_face) = if ray.velocity.dot(normal) < 0.0 {
             (normal, true)

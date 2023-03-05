@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bumpalo::Bump;
 
 use crate::ray::Ray;
@@ -6,7 +8,7 @@ use super::{AabbList, Hit, Hittable};
 
 pub struct World {
     bounding_boxes: AabbList,
-    objects: Vec<Box<dyn Hittable>>,
+    objects: Vec<Arc<dyn Hittable>>,
 }
 
 impl World {
@@ -17,7 +19,7 @@ impl World {
         }
     }
 
-    pub fn push(&mut self, object: Box<dyn Hittable>) {
+    pub fn push(&mut self, object: Arc<dyn Hittable>) {
         self.bounding_boxes.push(object.bounding_box());
         self.objects.push(object);
     }

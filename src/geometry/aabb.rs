@@ -4,7 +4,7 @@ use bumpalo::Bump;
 
 use crate::{
     ray::Ray,
-    vector::{Vector, Vector3x8},
+    vector::{Dimension, Vector, Vector3x8},
 };
 
 #[derive(Default)]
@@ -45,10 +45,9 @@ impl AabbList {
         let ts = arena.alloc_slice_fill_copy(len * 8, f32::INFINITY);
 
         let origin = Vector3x8::from(ray.origin);
-        let velocity_rcp = Vector3x8::from(ray.velocity).reciprocal();
+        let velocity_rcp = Vector3x8::from(ray.velocity.reciprocal());
 
-        for i in 0..len {
-            let bounding_box = &self.boxes[i];
+        for (i, bounding_box) in self.boxes.iter().enumerate() {
             let t = &mut ts[(i * 8)..(i * 8 + 8)];
 
             let t0 = (bounding_box.minimum - origin) * velocity_rcp;
@@ -57,17 +56,17 @@ impl AabbList {
             let mut tmin: [f32; 8] = [0.0001; 8];
             let mut tmax: [f32; 8] = t.try_into().unwrap();
 
-            for i in 0..8 {
-                tmin[i] = tmin[i].max(t0.x()[i].min(t1.x()[i]));
-                tmin[i] = tmin[i].max(t0.y()[i].min(t1.y()[i]));
-                tmin[i] = tmin[i].max(t0.z()[i].min(t1.z()[i]));
+            for j in 0..8 {
+                tmin[j] = tmin[j].max(t0.x()[j].min(t1.x()[j]));
+                tmin[j] = tmin[j].max(t0.y()[j].min(t1.y()[j]));
+                tmin[j] = tmin[j].max(t0.z()[j].min(t1.z()[j]));
 
-                tmax[i] = tmax[i].min(t0.x()[i].max(t1.x()[i]));
-                tmax[i] = tmax[i].min(t0.y()[i].max(t1.y()[i]));
-                tmax[i] = tmax[i].min(t0.z()[i].max(t1.z()[i]));
+                tmax[j] = tmax[j].min(t0.x()[j].max(t1.x()[j]));
+                tmax[j] = tmax[j].min(t0.y()[j].max(t1.y()[j]));
+                tmax[j] = tmax[j].min(t0.z()[j].max(t1.z()[j]));
 
-                if tmin[i] <= tmax[i] {
-                    t[i] = tmin[i];
+                if tmin[j] <= tmax[j] {
+                    t[j] = tmin[j];
                 }
             }
         }
@@ -89,21 +88,24 @@ impl Aabb {
     };
 
     pub fn hit(&self, ray: Ray, t_range: Range<f32>) -> bool {
-        for a in 0..3 {
-            let inv_d = 1.0 / ray.velocity[a];
-            let mut t0 = (self.minimum[a] - ray.origin[a]) * inv_d;
-            let mut t1 = (self.maximum[a] - ray.origin[a]) * inv_d;
-            if inv_d < 0.0 {
-                std::mem::swap(&mut t0, &mut t1);
-            }
-            let t_min = t0.max(t_range.start);
-            let t_max = t1.min(t_range.end);
-            if t_max <= t_min {
-                return false;
-            }
-        }
+        let vel_rcp = ray.velocity.reciprocal();
 
-        true
+        let t0 = (self.minimum - ray.origin) * vel_rcp;
+        let t1 = (self.maximum - ray.origin) * vel_rcp;
+
+        let mut tmin = t_range.start;
+        let mut tmax = t_range.end;
+
+        let mut min = t0.min(t1);
+        min.0[3] = tmin;
+
+        let mut max = t0.max(t1);
+        max.0[3] = tmax;
+
+        tmin = min.max_elem();
+        tmax = max.min_elem();
+
+        tmin <= tmax
     }
 
     pub fn merge(&self, other: &Self) -> Self {
@@ -113,9 +115,39 @@ impl Aabb {
         }
     }
 
+    pub fn merge_vector(&self, vector: &Vector) -> Self {
+        Self {
+            minimum: self.minimum.min(*vector),
+            maximum: self.maximum.max(*vector),
+        }
+    }
+
     pub fn intersection(&self, other: &Self) -> Vector {
         let min = self.minimum.max(other.minimum);
         let max = self.maximum.min(other.maximum);
         max - min
+    }
+
+    pub fn maximum_extent(&self) -> Option<Dimension> {
+        let diff = self.maximum - self.minimum;
+
+        if diff.is_almost_zero() {
+            None
+        } else {
+            let axis = if diff.x() > diff.y() {
+                if diff.x() > diff.z() {
+                    Dimension::X
+                } else {
+                    Dimension::Z
+                }
+            } else {
+                if diff.y() > diff.z() {
+                    Dimension::Y
+                } else {
+                    Dimension::Z
+                }
+            };
+            Some(axis)
+        }
     }
 }
