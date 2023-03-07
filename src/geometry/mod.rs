@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-pub use aabb::{Aabb, AabbList};
+use aabb::Aabb;
 pub use sphere::Sphere;
 
 use crate::{material::Material, ray::Ray, vector::Vector};
