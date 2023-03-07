@@ -3,15 +3,43 @@ use std::f32::consts::TAU;
 use crate::{color::Color, geometry::Hit, ray::Ray, vector::Vector, RayState, RngKey};
 
 pub use dialectric::Dialectric;
+pub use diffuse_light::DiffuseLight;
 pub use lambertian::Lambertian;
 pub use metal::Metal;
 
 mod dialectric;
+mod diffuse_light;
 mod lambertian;
 mod metal;
 
 pub trait Material: Send + Sync {
-    fn scatter(&self, hit: &Hit, state: &RayState) -> Option<(Ray, Color)>;
+    fn hit(&self, hit: &Hit, state: &RayState) -> MaterialHitResult;
+}
+
+pub struct Reflection {
+    pub ray: Ray,
+    pub attenuation: Color,
+}
+
+pub struct MaterialHitResult {
+    pub reflection: Option<Reflection>,
+    pub emission: Color,
+}
+
+impl MaterialHitResult {
+    fn reflecting(ray: Ray, attenuation: Color) -> Self {
+        Self {
+            reflection: Some(Reflection { ray, attenuation }),
+            emission: Color::BLACK,
+        }
+    }
+
+    fn emitting(emission: Color) -> Self {
+        Self {
+            reflection: None,
+            emission,
+        }
+    }
 }
 
 // https://math.stackexchange.com/a/44691

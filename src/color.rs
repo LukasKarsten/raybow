@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Color {
     pub r: f32,
     pub g: f32,
@@ -8,12 +8,11 @@ pub struct Color {
 }
 
 impl Color {
-    pub fn from_rgb(r: f32, g: f32, b: f32) -> Self {
-        Self {
-            r: r.clamp(0.0, 1.0),
-            g: g.clamp(0.0, 1.0),
-            b: b.clamp(0.0, 1.0),
-        }
+    pub const BLACK: Self = Self::from_rgb(0.0, 0.0, 0.0);
+    pub const WHITE: Self = Self::from_rgb(1.0, 1.0, 1.0);
+
+    pub const fn from_rgb(r: f32, g: f32, b: f32) -> Self {
+        Self { r, g, b }
     }
 
     pub fn from_rgb_bytes(r: u8, g: u8, b: u8) -> Self {

@@ -14,6 +14,7 @@ use std::{
 
 use bumpalo::Bump;
 use geometry::Hittable;
+use material::{MaterialHitResult, Reflection};
 
 use crate::{geometry::bvh::LinearTree, philox::Philox4x32_10};
 
@@ -58,32 +59,37 @@ impl RayState {
     }
 }
 
-fn ray_color(ray: Ray, bvh: &LinearTree, max_bounces: u32, state: &mut RayState) -> Color {
-    let mut color = Color::from_rgb(1.0, 1.0, 1.0);
-
-    let mut curr_ray = ray;
-
-    for _ in 0..max_bounces {
-        match bvh.hit(curr_ray, state.arena()) {
-            Some(hit) => match hit.material.scatter(&hit, state) {
-                Some((ray, attenuation)) => {
-                    color *= attenuation;
-                    curr_ray = ray;
-                }
-                None => return Color::from_rgb(0.0, 0.0, 0.0),
-            },
-            None => {
-                let unit_vel = curr_ray.velocity.normalize_unchecked();
-
-                let t = 0.5 * (unit_vel.y() + 1.0f32);
-                let top = Color::from_rgb(1.0, 1.0, 1.0);
-                let bottom = Color::from_rgb(0.5, 0.7, 1.0);
-                return color * top.lerp(bottom, t);
-            }
-        }
+fn ray_color(
+    ray: Ray,
+    bvh: &LinearTree,
+    max_bounces: u32,
+    state: &mut RayState,
+    background: Color,
+) -> Color {
+    if max_bounces == 0 {
+        return Color::BLACK;
     }
 
-    Color::from_rgb(0.0, 0.0, 0.0)
+    match bvh.hit(ray, state.arena()) {
+        Some(hit) => {
+            let MaterialHitResult {
+                reflection: scatter_info,
+                emission: emitting,
+            } = hit.material.hit(&hit, state);
+            match scatter_info {
+                Some(Reflection {
+                    ray: scatter_ray,
+                    attenuation,
+                }) => {
+                    let next_color =
+                        ray_color(scatter_ray, bvh, max_bounces - 1, state, background);
+                    emitting + attenuation * next_color
+                }
+                None => emitting,
+            }
+        }
+        None => background,
+    }
 }
 
 pub fn render(
@@ -92,6 +98,7 @@ pub fn render(
     rays_per_pixel: u32,
     camera: &Camera,
     objects: Vec<Arc<dyn Hittable>>,
+    background: Color,
     seed: u64,
 ) -> Vec<u8> {
     let start_time = SystemTime::now();
@@ -157,7 +164,7 @@ pub fn render(
                     let v = (y as f32 + y_off) / image_height as f32;
                     let ray = camera.get_ray(u, 1.0 - v, &state);
 
-                    color_sum += ray_color(ray, bvh, 50, &mut state);
+                    color_sum += ray_color(ray, bvh, 50, &mut state, background);
 
                     state.arena().reset();
                 }

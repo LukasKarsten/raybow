@@ -7,7 +7,7 @@ use argh::FromArgs;
 use rapid_qoi::{Colors, Qoi};
 use raybow::{
     geometry::{Hittable, Sphere},
-    material::{Dialectric, Lambertian, Material, Metal},
+    material::{DiffuseLight, Lambertian, Material, Metal},
     vector::Vector,
     Camera, Color,
 };
@@ -46,13 +46,13 @@ struct Options {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options: Options = argh::from_env();
 
-    let (camera, objects) = match options.scene.as_str() {
+    let (camera, objects, background) = match options.scene.as_str() {
         "builtin:spheres" => gen_scene_spheres(options.width as f32 / options.height as f32),
         _ => {
             let scene = Scene::from_file(Path::new(&options.scene))?;
             let camera = scene.construct_camera(options.width as f32 / options.height as f32);
             let objects = scene.construct_world();
-            (camera, objects)
+            (camera, objects, scene.background)
         }
     };
 
@@ -62,6 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         options.rays_per_pixel,
         &camera,
         objects,
+        background,
         options.seed,
     );
 
@@ -77,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn gen_scene_spheres(aspect_ratio: f32) -> (Camera, Vec<Arc<dyn Hittable>>) {
+fn gen_scene_spheres(aspect_ratio: f32) -> (Camera, Vec<Arc<dyn Hittable>>, Color) {
     let lookfrom = Vector::from_xyz(13.0, 2.0, 3.0);
     let lookat = Vector::from_xyz(0.0, 0.0, 0.0);
     let vup = Vector::from_xyz(0.0, 1.0, 0.0);
@@ -88,7 +89,7 @@ fn gen_scene_spheres(aspect_ratio: f32) -> (Camera, Vec<Arc<dyn Hittable>>) {
         lookfrom,
         lookat,
         vup,
-        20.0,
+        50.0,
         aspect_ratio,
         aperture,
         dist_to_focus,
@@ -116,36 +117,19 @@ fn gen_scene_spheres(aspect_ratio: f32) -> (Camera, Vec<Arc<dyn Hittable>>) {
             let center = Vector::from_xyz(x, y + 0.2, z);
 
             let albedo = Color::from_rgb(0.3, 0.7, 0.9);
-            let material = Arc::new(Lambertian { albedo });
+            let material = Arc::new(Metal { albedo, fuzz: 0.1 });
             objects.push(Arc::new(Sphere::new(center, 0.2, material)));
         }
     }
 
-    let material1: Arc<dyn Material> = Arc::new(Dialectric { index: 1.5 });
-    objects.push(Arc::new(Sphere::new(
-        Vector::from_xyz(0.0, 1.0, 0.0),
-        1.0,
-        Arc::clone(&material1),
-    )));
-
-    let material2: Arc<dyn Material> = Arc::new(Lambertian {
-        albedo: Color::from_rgb(0.4, 0.2, 0.1),
+    let light: Arc<dyn Material> = Arc::new(DiffuseLight {
+        emit: Color::WHITE * 4.0,
     });
     objects.push(Arc::new(Sphere::new(
-        Vector::from_xyz(-4.0, 1.0, 0.0),
-        1.0,
-        Arc::clone(&material2),
+        Vector::from_xyz(0.0, 3.0, 0.0),
+        0.5,
+        Arc::clone(&light),
     )));
 
-    let material3: Arc<dyn Material> = Arc::new(Metal {
-        albedo: Color::from_rgb(0.7, 0.6, 0.5),
-        fuzz: 0.0,
-    });
-    objects.push(Arc::new(Sphere::new(
-        Vector::from_xyz(4.0, 1.0, 0.0),
-        1.0,
-        Arc::clone(&material3),
-    )));
-
-    (camera, objects)
+    (camera, objects, Color::BLACK)
 }

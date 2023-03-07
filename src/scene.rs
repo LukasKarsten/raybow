@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt, path::Path, sync::Arc};
 
 use raybow::{
     geometry::{Hittable, Sphere},
-    material::{Dialectric, Lambertian, Material, Metal},
+    material::{Dialectric, DiffuseLight, Lambertian, Material, Metal},
     vector::Vector,
     Camera, Color,
 };
@@ -96,14 +96,16 @@ enum MaterialDesc {
     Dialectric {
         refraction_index: f32,
     },
+    DiffuseLight {
+        #[serde(deserialize_with = "deserialize_color")]
+        emit: Color,
+    },
 }
 
 impl From<&MaterialDesc> for Arc<dyn Material> {
     fn from(desc: &MaterialDesc) -> Self {
         match desc {
-            MaterialDesc::Lambertian { albedo } => Arc::new(Lambertian {
-                albedo: *albedo,
-            }),
+            MaterialDesc::Lambertian { albedo } => Arc::new(Lambertian { albedo: *albedo }),
             MaterialDesc::Metal { albedo, fuzz } => Arc::new(Metal {
                 albedo: *albedo,
                 fuzz: *fuzz,
@@ -111,6 +113,7 @@ impl From<&MaterialDesc> for Arc<dyn Material> {
             MaterialDesc::Dialectric { refraction_index } => Arc::new(Dialectric {
                 index: *refraction_index,
             }),
+            MaterialDesc::DiffuseLight { emit } => Arc::new(DiffuseLight { emit: *emit }),
         }
     }
 }
@@ -130,6 +133,8 @@ pub struct Scene {
     camera: CameraDesc,
     materials: HashMap<String, MaterialDesc>,
     objects: Vec<ObjectDesc>,
+    #[serde(deserialize_with = "deserialize_color", default)]
+    pub background: Color,
 }
 
 impl Scene {
