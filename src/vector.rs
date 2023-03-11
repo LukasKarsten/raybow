@@ -111,27 +111,6 @@ impl Vector {
     }
 
     #[cfg(feature = "simd")]
-    pub fn min_elem(self) -> f32 {
-        unsafe {
-            let wzyx = self.to_simd();
-            let yxwz = _mm_permute_ps::<0b01_00_11_10>(wzyx);
-
-            let wy_zx_wy_zx = _mm_min_ps(wzyx, yxwz);
-
-            let zx_wy_zx_wy = _mm_permute_ps::<0b10_11_00_01>(wy_zx_wy_zx);
-
-            let wzyx_min = _mm_min_ps(wy_zx_wy_zx, zx_wy_zx_wy);
-
-            f32::from_bits(_mm_extract_ps::<0>(wzyx_min) as u32)
-        }
-    }
-
-    #[cfg(not(feature = "simd"))]
-    pub fn min_elem(self) -> f32 {
-        self.x().min(self.y()).min(self.z()).min(self.w())
-    }
-
-    #[cfg(feature = "simd")]
     pub fn max(self, other: Self) -> Self {
         unsafe { Self::from_simd(_mm_max_ps(self.to_simd(), other.to_simd())) }
     }
@@ -143,27 +122,6 @@ impl Vector {
         let z = self.z().max(other.z());
         let w = self.w().max(other.w());
         Self::from_xyzw(x, y, z, w)
-    }
-
-    #[cfg(feature = "simd")]
-    pub fn max_elem(self) -> f32 {
-        unsafe {
-            let wzyx = self.to_simd();
-            let yxwz = _mm_permute_ps::<0b01_00_11_10>(wzyx);
-
-            let wy_zx_wy_zx = _mm_max_ps(wzyx, yxwz);
-
-            let zx_wy_zx_wy = _mm_permute_ps::<0b10_11_00_01>(wy_zx_wy_zx);
-
-            let wzyx_min = _mm_max_ps(wy_zx_wy_zx, zx_wy_zx_wy);
-
-            f32::from_bits(_mm_extract_ps::<0>(wzyx_min) as u32)
-        }
-    }
-
-    #[cfg(not(feature = "simd"))]
-    pub fn max_elem(self) -> f32 {
-        self.x().max(self.y()).max(self.z()).max(self.w())
     }
 
     pub fn sum(self) -> f32 {
