@@ -1,19 +1,58 @@
+use std::fs::File;
+use std::io::BufWriter;
+use std::str::FromStr;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use argh::FromArgs;
+use exr::image::{
+    write::{channels::GetPixel, WritableImage},
+    Image as ExrImage, SpecificChannels,
+};
 use rapid_qoi::{Colors, Qoi};
 use raybow::{
     geometry::{Hittable, Sphere},
     material::{DiffuseLight, Lambertian, Material, Metal},
     vector::Vector,
-    Camera, Color,
+    Camera, Color, Image,
 };
 use scene::Scene;
 
 mod scene;
+
+enum OutputFormat {
+    Exr,
+    Qoi,
+    Png,
+}
+
+impl OutputFormat {
+    fn default_file_extension(&self) -> &'static str {
+        match self {
+            Self::Exr => "exr",
+            Self::Qoi => "qoi",
+            Self::Png => "png",
+        }
+    }
+}
+
+impl FromStr for OutputFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.eq_ignore_ascii_case("exr") {
+            Ok(Self::Exr)
+        } else if s.eq_ignore_ascii_case("qoi") {
+            Ok(Self::Qoi)
+        } else if s.eq_ignore_ascii_case("png") {
+            Ok(Self::Png)
+        } else {
+            Err(format!("unsupported output format: {s}"))
+        }
+    }
+}
 
 /// A blazingly slow toy CPU Raytracer
 #[derive(FromArgs)]
@@ -39,8 +78,12 @@ struct Options {
     seed: u64,
 
     /// path to which the output should be written
-    #[argh(option, short = 'o', default = "PathBuf::from(\"output.qoi\")")]
-    output: PathBuf,
+    #[argh(option, short = 'o')]
+    output: Option<PathBuf>,
+
+    /// data format in which to encode the output
+    #[argh(option, short = 'f', default = "OutputFormat::Exr")]
+    output_format: OutputFormat,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,9 +99,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let pixels = raybow::render(
-        options.width,
-        options.height,
+    let mut image = Image::new(options.width, options.height);
+
+    raybow::render(
+        &mut image,
         options.rays_per_pixel,
         &camera,
         objects,
@@ -66,14 +110,77 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         options.seed,
     );
 
+    let output_path = options.output.unwrap_or_else(|| {
+        PathBuf::new()
+            .with_file_name("output")
+            .with_extension(options.output_format.default_file_extension())
+    });
+
+    match options.output_format {
+        OutputFormat::Exr => write_exr(image, &output_path)?,
+        OutputFormat::Qoi => write_qoi(image, &output_path)?,
+        OutputFormat::Png => write_png(image, &output_path)?,
+    }
+
+    Ok(())
+}
+
+struct ImageGetPixelNewType<'a>(&'a Image);
+
+impl<'a> GetPixel for ImageGetPixelNewType<'a> {
+    type Pixel = (f32, f32, f32);
+
+    fn get_pixel(&self, position: exr::prelude::Vec2<usize>) -> Self::Pixel {
+        let x = position.x() as u32;
+        let y = position.y() as u32;
+        let Color { r, g, b } = self.0.pixel(x, y).unwrap();
+        (r, g, b)
+    }
+}
+
+fn write_exr(image: Image, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let pixels = SpecificChannels::rgb(ImageGetPixelNewType(&image));
+
+    let exr_image =
+        ExrImage::from_channels((image.width() as usize, image.height() as usize), pixels);
+
+    exr_image.write().to_file(path)?;
+
+    Ok(())
+}
+
+fn write_qoi(image: Image, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let qoi = Qoi {
-        width: options.width,
-        height: options.height,
+        width: image.width(),
+        height: image.height(),
         colors: Colors::Srgb,
     };
-    let encoded = qoi.encode_alloc(&pixels)?;
 
-    std::fs::write(options.output, encoded)?;
+    let encoded = qoi.encode_alloc(&image.into_srgb_8bit())?;
+    std::fs::write(path, encoded)?;
+
+    Ok(())
+}
+
+fn write_png(image: Image, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    use png::{AdaptiveFilterType, BitDepth, ColorType, Compression, SrgbRenderingIntent};
+
+    let mut encoder = png::Encoder::new(
+        BufWriter::new(File::create(path)?),
+        image.width(),
+        image.height(),
+    );
+    encoder.set_color(ColorType::Rgb);
+    encoder.set_depth(BitDepth::Eight);
+    encoder.set_srgb(SrgbRenderingIntent::Perceptual);
+    encoder.set_adaptive_filter(AdaptiveFilterType::Adaptive);
+    encoder.set_compression(Compression::Best);
+
+    encoder.add_text_chunk(String::from("software"), String::from("raybow"))?;
+
+    let mut writer = encoder.write_header()?;
+    writer.write_image_data(&image.into_srgb_8bit())?;
+    writer.finish()?;
 
     Ok(())
 }
