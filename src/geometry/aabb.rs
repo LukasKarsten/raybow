@@ -26,6 +26,15 @@ impl Aabb {
         let min = t0.min(t1);
         let max = t0.max(t1);
 
+        #[cfg(not(feature = "simd"))]
+        {
+            let tmin = min.x().max(min.y()).max(min.z()).max(t_range.start);
+            let tmax = max.x().min(max.y()).min(max.z()).min(t_range.end);
+
+            tmin <= tmax
+        }
+
+        #[cfg(feature = "simd")]
         unsafe {
             use std::arch::x86_64::*;
 
