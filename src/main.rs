@@ -171,7 +171,7 @@ fn write_png(image: Image, path: &Path) -> Result<(), Box<dyn std::error::Error>
         image.height(),
     );
     encoder.set_color(ColorType::Rgb);
-    encoder.set_depth(BitDepth::Eight);
+    encoder.set_depth(BitDepth::Sixteen);
     encoder.set_srgb(SrgbRenderingIntent::Perceptual);
     encoder.set_adaptive_filter(AdaptiveFilterType::Adaptive);
     encoder.set_compression(Compression::Best);
@@ -179,7 +179,7 @@ fn write_png(image: Image, path: &Path) -> Result<(), Box<dyn std::error::Error>
     encoder.add_text_chunk(String::from("software"), String::from("raybow"))?;
 
     let mut writer = encoder.write_header()?;
-    writer.write_image_data(&image.into_srgb_8bit())?;
+    writer.write_image_data(&image.into_srgb_16bit())?;
     writer.finish()?;
 
     Ok(())

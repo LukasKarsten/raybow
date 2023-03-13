@@ -36,17 +36,16 @@ impl Image {
     }
 
     pub fn into_srgb_8bit(self) -> Box<[u8]> {
-        const INV_GAMMA: f32 = 1.0 / 2.2;
-
         self.pixels
             .iter()
-            .flat_map(|color| {
-                let mut color = *color;
-                color.r = color.r.powf(INV_GAMMA);
-                color.g = color.g.powf(INV_GAMMA);
-                color.b = color.b.powf(INV_GAMMA);
-                color.to_rgb_bytes()
-            })
+            .flat_map(|color| color.apply_gamma().to_rgb_bytes_8bit())
+            .collect()
+    }
+
+    pub fn into_srgb_16bit(self) -> Box<[u8]> {
+        self.pixels
+            .iter()
+            .flat_map(|color| color.apply_gamma().to_rgb_bytes_16bit())
             .collect()
     }
 }
