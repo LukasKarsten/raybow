@@ -40,10 +40,18 @@ impl Color {
     }
 
     pub fn apply_gamma(self) -> Self {
+        fn apply(v: f32) -> f32 {
+            if v <= 0.0031308 {
+                v * 12.92
+            } else {
+                1.055 * v.powf(1.0 / 2.4) - 0.055
+            }
+        }
+
         Self {
-            r: self.r.powf(1.0 / 2.0),
-            g: self.g.powf(1.0 / 2.0),
-            b: self.b.powf(1.0 / 2.0),
+            r: apply(self.r),
+            g: apply(self.g),
+            b: apply(self.b),
         }
     }
 
