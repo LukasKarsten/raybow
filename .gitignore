@@ -1,6 +1,8 @@
 /target
 /.pgo
+*.exr
 *.qoi
+*.png
 perf*
 flamegraph.svg
 Session.vim
