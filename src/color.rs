@@ -23,12 +23,36 @@ impl Color {
         }
     }
 
-    pub fn to_rgb_bytes(self) -> [u8; 3] {
-        let r: u8 = (self.r * 255.0).round() as u8;
-        let g: u8 = (self.g * 255.0).round() as u8;
-        let b: u8 = (self.b * 255.0).round() as u8;
+    pub fn to_rgb_bytes_8bit(self) -> [u8; 3] {
+        let r = (self.r * 255.0).round() as u8;
+        let g = (self.g * 255.0).round() as u8;
+        let b = (self.b * 255.0).round() as u8;
 
         [r, g, b]
+    }
+
+    pub fn to_rgb_bytes_16bit(self) -> [u8; 6] {
+        let [rh, rl] = ((self.r * 65535.0).round() as u16).to_be_bytes();
+        let [gh, gl] = ((self.g * 65535.0).round() as u16).to_be_bytes();
+        let [bh, bl] = ((self.b * 65535.0).round() as u16).to_be_bytes();
+
+        [rh, rl, gh, gl, bh, bl]
+    }
+
+    pub fn apply_gamma(self) -> Self {
+        fn apply(v: f32) -> f32 {
+            if v <= 0.0031308 {
+                v * 12.92
+            } else {
+                1.055 * v.powf(1.0 / 2.4) - 0.055
+            }
+        }
+
+        Self {
+            r: apply(self.r),
+            g: apply(self.g),
+            b: apply(self.b),
+        }
     }
 
     pub fn lerp(self, other: Color, t: f32) -> Color {
