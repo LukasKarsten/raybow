@@ -1,8 +1,8 @@
-use std::fs::File;
-use std::io::BufWriter;
-use std::str::FromStr;
 use std::{
+    fs::File,
+    io::BufWriter,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::Arc,
 };
 
