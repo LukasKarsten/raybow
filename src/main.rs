@@ -13,7 +13,7 @@ use exr::image::{
 };
 use rapid_qoi::{Colors, Qoi};
 use raybow::{
-    geometry::{Hittable, Sphere},
+    geometry::{Object, Sphere},
     material::{DiffuseLight, Lambertian, Material, Metal},
     vector::Vector,
     Camera, Color, Image,
@@ -185,7 +185,7 @@ fn write_png(image: Image, path: &Path) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
-fn gen_scene_spheres(aspect_ratio: f32) -> (Camera, Vec<Arc<dyn Hittable>>, Color) {
+fn gen_scene_spheres(aspect_ratio: f32) -> (Camera, Vec<Arc<dyn Object>>, Color) {
     let lookfrom = Vector::from_xyz(13.0, 2.0, 3.0);
     let lookat = Vector::from_xyz(0.0, 0.0, 0.0);
     let vup = Vector::from_xyz(0.0, 1.0, 0.0);
@@ -202,7 +202,7 @@ fn gen_scene_spheres(aspect_ratio: f32) -> (Camera, Vec<Arc<dyn Hittable>>, Colo
         dist_to_focus,
     );
 
-    let mut objects = Vec::<Arc<dyn Hittable>>::new();
+    let mut objects = Vec::<Arc<dyn Object>>::new();
 
     let ground: Arc<dyn Material> = Arc::new(Lambertian {
         albedo: Color::from_rgb(0.5, 0.5, 0.5),

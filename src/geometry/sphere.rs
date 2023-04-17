@@ -2,7 +2,7 @@ use std::{ops::Range, sync::Arc};
 
 use crate::{material::Material, ray::Ray, vector::Vector};
 
-use super::{Aabb, Hit, Hittable};
+use super::{Aabb, Hit, Object};
 
 pub struct Sphere {
     center: Vector,
@@ -20,7 +20,7 @@ impl Sphere {
     }
 }
 
-impl Hittable for Sphere {
+impl Object for Sphere {
     fn hit(&self, ray: Ray, t_range: Range<f32>) -> Option<Hit> {
         let oc = self.center - ray.origin;
         let tca = oc.dot(ray.velocity);

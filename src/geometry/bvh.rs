@@ -1,163 +1,245 @@
-use std::{num::NonZeroU16, sync::Arc};
+use std::{alloc::Layout, arch::x86_64::*, ops::Range};
 
 use bumpalo::Bump;
 
 use crate::{
     ray::Ray,
-    vector::{Dimension, Vector},
+    vector::{Dimension, Vector, Vector3x8},
 };
 
-use super::{Aabb, Hit, Hittable};
+use super::{aabb::Aabb, Hit, Object};
 
-#[allow(dead_code)]
-#[derive(Clone, Copy)]
-enum SplitMethod {
-    Middle,
-    EqualCounts,
-    //Sah,
+#[derive(Copy, Clone)]
+enum Node {
+    Leaf { offset: u32, length: u16 },
+    Branch { idx: u32 },
+}
+
+#[repr(align(64))]
+struct Branch {
+    aabb_min: Vector3x8,
+    aabb_max: Vector3x8,
+    children: [Node; 8],
+}
+
+pub struct Bvh<T> {
+    objects: Vec<T>,
+    branches: Box<[Branch]>,
+    root: Node,
+    max_depth: usize,
 }
 
 struct ObjectInfo {
-    aabb: Aabb,
     centroid: Vector,
-    object: Arc<dyn Hittable>,
+    bounds: Aabb,
+    idx: usize,
 }
 
-impl ObjectInfo {
-    fn new(object: Arc<dyn Hittable>) -> Self {
-        let aabb = object.bounding_box();
-        Self {
-            aabb,
-            centroid: (aabb.minimum + aabb.maximum) * 0.5,
-            object,
-        }
-    }
-}
-
-struct BuildNode<'a> {
-    aabb: Aabb,
-    variant: BuildNodeVariant<'a>,
-}
-
-enum BuildNodeVariant<'a> {
-    Leaf {
-        objects_offset: u32,
-        num_objects: NonZeroU16,
-    },
-    Branch {
-        split_dim: Dimension,
-        children: [&'a BuildNode<'a>; 2],
-    },
-}
-
-impl<'a> BuildNode<'a> {
-    fn build_recursive(
-        split_method: SplitMethod,
-        arena: &'a Bump,
-        objects: &'a mut [ObjectInfo],
-        total_nodes: &mut usize,
-        ordered_objects: &mut Vec<Arc<dyn Hittable>>,
-    ) -> &'a BuildNode<'a> {
-        *total_nodes += 1;
-
-        let aabb = objects
+impl<T: Object + Clone> Bvh<T> {
+    pub fn new(objects: &[T]) -> Self {
+        let mut obj_infos: Vec<_> = objects
             .iter()
-            .map(|obj| obj.aabb)
-            .reduce(|a, b| a.merge(&b))
-            .expect("objects is not empty");
+            .enumerate()
+            .map(|(idx, obj)| ObjectInfo {
+                centroid: obj.centroid(),
+                bounds: obj.bounding_box(),
+                idx,
+            })
+            .collect();
 
-        let centroid_bounds = centroid_bounds(objects);
+        let mut branches = Vec::new();
 
-        match centroid_bounds.maximum_extent() {
-            None => {
-                let object = &objects[0];
-                let objects_offset = ordered_objects.len();
-                ordered_objects.push(Arc::clone(&object.object));
-                arena.alloc(Self {
-                    aabb,
-                    variant: BuildNodeVariant::Leaf {
-                        objects_offset: objects_offset
-                            .try_into()
-                            .expect("ordered_objects.len() fits into 32 bits"),
-                        num_objects: NonZeroU16::new(
-                            objects.len().try_into().unwrap(), // XXX: Split somehow if too large
-                        )
-                        .expect("objects is not empty"),
-                    },
-                })
-            }
-            Some(split_dim) => {
-                let (left, right) = match split_method {
-                    SplitMethod::Middle => split_middle(objects, &centroid_bounds, split_dim),
-                    SplitMethod::EqualCounts => split_equal_counts(objects, split_dim),
-                };
+        let (root, _aabb, max_depth) = build(obj_infos.as_mut_slice(), 0, &mut branches);
 
-                arena.alloc(BuildNode {
-                    aabb,
-                    variant: BuildNodeVariant::Branch {
-                        split_dim,
-                        children: [
-                            Self::build_recursive(
-                                split_method,
-                                arena,
-                                left,
-                                total_nodes,
-                                ordered_objects,
-                            ),
-                            Self::build_recursive(
-                                split_method,
-                                arena,
-                                right,
-                                total_nodes,
-                                ordered_objects,
-                            ),
-                        ],
-                    },
-                })
-            }
+        let objects = obj_infos
+            .into_iter()
+            .map(|obj| objects[obj.idx].clone())
+            .collect();
+
+        Self {
+            objects,
+            branches: branches.into_boxed_slice(),
+            root,
+            max_depth,
         }
     }
 
-    fn to_linear(&self, nodes: &mut Vec<LinearNode>) {
-        match self.variant {
-            BuildNodeVariant::Leaf {
-                objects_offset,
-                num_objects,
-            } => {
-                nodes.push(LinearNode {
-                    aabb: self.aabb,
-                    variant: LinearNodeVariant::Leaf {
-                        objects_offset,
-                        num_objects,
-                    },
-                });
-            }
-            BuildNodeVariant::Branch {
-                split_dim,
-                children,
-            } => {
-                let idx = nodes.len();
+    pub fn hit(&self, ray: Ray, arena: &Bump) -> Option<Hit> {
+        let pending_nodes_cap = self.max_depth * 7 + 1;
+        let pending_nodes = arena
+            .alloc_layout(Layout::array::<Node>(pending_nodes_cap).unwrap())
+            .as_ptr()
+            .cast::<Node>();
+        unsafe {
+            pending_nodes.offset(0).write(self.root);
+        }
+        let mut pending_nodes_len = 1;
 
-                nodes.push(LinearNode {
-                    aabb: self.aabb,
-                    variant: LinearNodeVariant::Branch {
-                        second_child_offset: 0,
-                        split_dim,
-                    },
-                });
-                children[0].to_linear(nodes);
-                let second_child_offset_val = nodes
-                    .len()
-                    .try_into()
-                    .expect("nodes.len() fits into 32 bits");
-                let LinearNodeVariant::Branch { second_child_offset, .. } = &mut nodes[idx].variant else {
-                    panic!("this function is such a clusterfuck");
-                };
-                *second_child_offset = second_child_offset_val;
-                children[1].to_linear(nodes);
+        let mut nearest_t = f32::INFINITY;
+        let mut nearest_hit = None;
+
+        loop {
+            if pending_nodes_len == 0 {
+                break;
+            }
+            let node = unsafe {
+                pending_nodes_len -= 1;
+                pending_nodes.add(pending_nodes_len).read()
+            };
+
+            match node {
+                Node::Leaf { offset, length } => {
+                    for obj in &self.objects[offset as usize..offset as usize + length as usize] {
+                        if let Some(hit) = obj.hit(ray, 0.0001..nearest_t) {
+                            nearest_t = hit.t;
+                            nearest_hit = Some(hit);
+                        }
+                    }
+                }
+                Node::Branch { idx, .. } => {
+                    let branch = &self.branches[idx as usize];
+
+                    let mut mask =
+                        intersections(ray, branch.aabb_min, branch.aabb_max, 0.0001..nearest_t);
+
+                    loop {
+                        let idx = mask.trailing_zeros();
+                        if idx == u8::BITS {
+                            break;
+                        }
+                        mask &= !(1 << idx);
+                        let child = branch.children[idx as usize];
+                        unsafe {
+                            pending_nodes.add(pending_nodes_len).write(child);
+                            pending_nodes_len += 1;
+                        }
+                    }
+                }
             }
         }
+
+        nearest_hit
     }
+}
+
+fn intersections(ray: Ray, aabb_min: Vector3x8, aabb_max: Vector3x8, t_range: Range<f32>) -> u8 {
+    unsafe {
+        let vel_rcp = ray.velocity.reciprocal();
+        let vel_rcp_x = _mm256_set1_ps(vel_rcp.x());
+        let vel_rcp_y = _mm256_set1_ps(vel_rcp.y());
+        let vel_rcp_z = _mm256_set1_ps(vel_rcp.z());
+
+        let origin_x = _mm256_set1_ps(ray.origin.x());
+        let origin_y = _mm256_set1_ps(ray.origin.y());
+        let origin_z = _mm256_set1_ps(ray.origin.z());
+
+        let aabb_min_x = _mm256_load_ps(aabb_min.x().as_ptr());
+        let aabb_min_y = _mm256_load_ps(aabb_min.y().as_ptr());
+        let aabb_min_z = _mm256_load_ps(aabb_min.z().as_ptr());
+
+        let t0_x = _mm256_mul_ps(_mm256_sub_ps(aabb_min_x, origin_x), vel_rcp_x);
+        let t0_y = _mm256_mul_ps(_mm256_sub_ps(aabb_min_y, origin_y), vel_rcp_y);
+        let t0_z = _mm256_mul_ps(_mm256_sub_ps(aabb_min_z, origin_z), vel_rcp_z);
+
+        let aabb_max_x = _mm256_load_ps(aabb_max.x().as_ptr());
+        let aabb_max_y = _mm256_load_ps(aabb_max.y().as_ptr());
+        let aabb_max_z = _mm256_load_ps(aabb_max.z().as_ptr());
+
+        let t1_x = _mm256_mul_ps(_mm256_sub_ps(aabb_max_x, origin_x), vel_rcp_x);
+        let t1_y = _mm256_mul_ps(_mm256_sub_ps(aabb_max_y, origin_y), vel_rcp_y);
+        let t1_z = _mm256_mul_ps(_mm256_sub_ps(aabb_max_z, origin_z), vel_rcp_z);
+
+        let min_x = _mm256_min_ps(t0_x, t1_x);
+        let min_y = _mm256_min_ps(t0_y, t1_y);
+        let min_z = _mm256_min_ps(t0_z, t1_z);
+
+        let max_x = _mm256_max_ps(t0_x, t1_x);
+        let max_y = _mm256_max_ps(t0_y, t1_y);
+        let max_z = _mm256_max_ps(t0_z, t1_z);
+
+        let t_start = _mm256_set1_ps(t_range.start);
+        let tmin = _mm256_max_ps(min_x, _mm256_max_ps(min_y, _mm256_max_ps(min_z, t_start)));
+
+        let t_end = _mm256_set1_ps(t_range.end);
+        let tmax = _mm256_min_ps(max_x, _mm256_min_ps(max_y, _mm256_min_ps(max_z, t_end)));
+
+        let mask = _mm256_cmp_ps(tmin, tmax, _CMP_LE_OQ);
+        _mm256_movemask_ps(mask) as u8
+    }
+}
+
+fn build(
+    objects: &mut [ObjectInfo],
+    offset: usize,
+    branches: &mut Vec<Branch>,
+) -> (Node, Aabb, usize) {
+    let centroid_bounds = centroid_bounds(objects);
+
+    match centroid_bounds.maximum_extent() {
+        None => build_leaf(objects, offset),
+        Some(split_dim) => build_branch(objects, offset, split_dim, centroid_bounds, branches),
+    }
+}
+
+fn build_leaf(objects: &mut [ObjectInfo], offset: usize) -> (Node, Aabb, usize) {
+    let aabb = objects
+        .iter()
+        .map(|obj| obj.bounds)
+        .reduce(|a, b| a.merge(&b))
+        .unwrap();
+
+    let child = Node::Leaf {
+        offset: offset as u32,
+        length: objects.len() as u16,
+    };
+    (child, aabb, 0)
+}
+
+fn build_branch(
+    objects: &mut [ObjectInfo],
+    mut offset: usize,
+    split_dim: Dimension,
+    centroid_bounds: Aabb,
+    branches: &mut Vec<Branch>,
+) -> (Node, Aabb, usize) {
+    let splits = split_middle8(objects, centroid_bounds, split_dim);
+
+    let own_idx = branches.len();
+    branches.push(Branch {
+        aabb_min: Vector3x8::ZERO,
+        aabb_max: Vector3x8::ZERO,
+        children: [Node::Leaf {
+            offset: 0,
+            length: 0,
+        }; 8],
+    });
+
+    let mut max_depth = 0;
+    let mut aabb: Option<Aabb> = None;
+    for (i, split) in splits
+        .into_iter()
+        .enumerate()
+        .filter(|(_, split)| !split.is_empty())
+    {
+        let (child, child_aabb, child_max_depth) = build(split, offset, branches);
+
+        let branch = &mut branches[own_idx];
+        branch.aabb_min.set_vec(i, child_aabb.minimum.into());
+        branch.aabb_max.set_vec(i, child_aabb.maximum.into());
+        branch.children[i] = child;
+
+        offset += split.len();
+        aabb = aabb
+            .map(|aabb| aabb.merge(&child_aabb))
+            .or(Some(child_aabb));
+        max_depth = max_depth.max(child_max_depth);
+    }
+
+    let child = Node::Branch {
+        idx: own_idx as u32,
+    };
+
+    (child, aabb.unwrap(), max_depth + 1)
 }
 
 fn centroid_bounds(objects: &[ObjectInfo]) -> Aabb {
@@ -177,13 +259,34 @@ fn centroid_bounds(objects: &[ObjectInfo]) -> Aabb {
     aabb
 }
 
-fn split_middle<'o>(
-    objects: &'o mut [ObjectInfo],
-    centroid_bounds: &Aabb,
+fn split_middle8(
+    objects: &mut [ObjectInfo],
+    centroid_bounds: Aabb,
     split_dim: Dimension,
-) -> (&'o mut [ObjectInfo], &'o mut [ObjectInfo]) {
-    let mid = (centroid_bounds.maximum[split_dim] - centroid_bounds.minimum[split_dim]) / 2.0;
-    let split_idx = partition(objects, |obj| obj.centroid[split_dim] < mid);
+) -> [&mut [ObjectInfo]; 8] {
+    let sum = centroid_bounds.maximum[split_dim] + centroid_bounds.minimum[split_dim];
+    const FACTOR: f32 = 0.125;
+
+    let (s1_4, s5_8) = split_middle(objects, sum * FACTOR * 4., split_dim);
+
+    let (s1_2, s3_4) = split_middle(s1_4, sum * FACTOR * 2., split_dim);
+    let (s5_6, s7_8) = split_middle(s5_8, sum * FACTOR * 6., split_dim);
+
+    let (s1, s2) = split_middle(s1_2, sum * FACTOR * 1., split_dim);
+    let (s3, s4) = split_middle(s3_4, sum * FACTOR * 3., split_dim);
+    let (s5, s6) = split_middle(s5_6, sum * FACTOR * 5., split_dim);
+    let (s7, s8) = split_middle(s7_8, sum * FACTOR * 7., split_dim);
+
+    [s1, s2, s3, s4, s5, s6, s7, s8]
+}
+
+fn split_middle(
+    objects: &mut [ObjectInfo],
+    mid: f32,
+    split_dim: Dimension,
+) -> (&mut [ObjectInfo], &mut [ObjectInfo]) {
+    let split_idx = partition(&mut objects[..], |obj| obj.centroid[split_dim] < mid);
+
     if split_idx == 0 || split_idx == objects.len() {
         split_equal_counts(objects, split_dim)
     } else {
@@ -195,6 +298,10 @@ fn split_equal_counts(
     objects: &mut [ObjectInfo],
     split_dim: Dimension,
 ) -> (&mut [ObjectInfo], &mut [ObjectInfo]) {
+    if objects.is_empty() {
+        return (&mut [], &mut []);
+    }
+
     let mid = objects.len() / 2;
 
     objects.select_nth_unstable_by(mid, |a, b| {
@@ -221,110 +328,5 @@ fn partition<T>(data: &mut [T], predicate: impl Fn(&T) -> bool) -> usize {
             return l;
         }
         data.swap(l, r);
-    }
-}
-
-#[repr(align(32))] // Align to cache lines boundaries
-struct LinearNode {
-    aabb: Aabb,
-    variant: LinearNodeVariant,
-}
-
-enum LinearNodeVariant {
-    Leaf {
-        objects_offset: u32,
-        num_objects: NonZeroU16,
-    },
-    Branch {
-        second_child_offset: u32,
-        split_dim: Dimension,
-    },
-}
-
-pub struct LinearTree {
-    nodes: Vec<LinearNode>,
-    ordered_objects: Vec<Arc<dyn Hittable>>,
-}
-
-impl LinearTree {
-    pub fn new(objects: Vec<Arc<dyn Hittable>>) -> Self {
-        let arena = Bump::new();
-
-        let mut object_infos: Vec<ObjectInfo> = objects.into_iter().map(ObjectInfo::new).collect();
-
-        let mut ordered_objects = Vec::new();
-
-        let mut total_nodes = 0;
-        let build_node = BuildNode::build_recursive(
-            SplitMethod::Middle,
-            &arena,
-            &mut object_infos,
-            &mut total_nodes,
-            &mut ordered_objects,
-        );
-
-        let mut nodes = Vec::new();
-        build_node.to_linear(&mut nodes);
-
-        Self {
-            nodes,
-            ordered_objects,
-        }
-    }
-
-    pub fn hit(&self, ray: Ray, _arena: &Bump) -> Option<Hit> {
-        let inv_vel = ray.velocity.reciprocal();
-        let vel_is_neg = [inv_vel.x() < 0.0, inv_vel.y() < 0.0, inv_vel.z() < 0.0];
-
-        let mut nodes_to_visit = Vec::with_capacity(64);
-        let mut curr_node_idx: u32 = 0;
-
-        let mut nearest_hit = None;
-        let mut nearest_t = f32::INFINITY;
-
-        loop {
-            let node = &self.nodes[curr_node_idx as usize];
-            if node.aabb.hit(ray, 0.0001..nearest_t) {
-                match node.variant {
-                    LinearNodeVariant::Leaf {
-                        objects_offset,
-                        num_objects,
-                    } => {
-                        let start: usize = objects_offset.try_into().unwrap();
-                        let end = start + usize::from(num_objects.get());
-                        for i in start..end {
-                            let object = &self.ordered_objects[i];
-                            if let Some(hit) = object.hit(ray, 0.0001..nearest_t) {
-                                nearest_t = hit.t;
-                                nearest_hit = Some(hit);
-                            }
-                        }
-                        match nodes_to_visit.pop() {
-                            Some(node) => curr_node_idx = node,
-                            None => break,
-                        }
-                    }
-                    LinearNodeVariant::Branch {
-                        second_child_offset,
-                        split_dim,
-                    } => {
-                        if vel_is_neg[usize::from(split_dim as u8)] {
-                            nodes_to_visit.push(curr_node_idx + 1);
-                            curr_node_idx = second_child_offset;
-                        } else {
-                            nodes_to_visit.push(second_child_offset);
-                            curr_node_idx += 1;
-                        }
-                    }
-                }
-            } else {
-                match nodes_to_visit.pop() {
-                    Some(node) => curr_node_idx = node,
-                    None => break,
-                }
-            }
-        }
-
-        nearest_hit
     }
 }

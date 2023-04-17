@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt, path::Path, sync::Arc};
 
 use raybow::{
-    geometry::{Hittable, Sphere},
+    geometry::{Object, Sphere},
     material::{Dialectric, DiffuseLight, Lambertian, Material, Metal},
     vector::Vector,
     Camera, Color,
@@ -155,8 +155,8 @@ impl Scene {
         )
     }
 
-    pub fn construct_world(&self) -> Vec<Arc<dyn Hittable>> {
-        let mut objects = Vec::<Arc<dyn Hittable>>::new();
+    pub fn construct_world(&self) -> Vec<Arc<dyn Object>> {
+        let mut objects = Vec::<Arc<dyn Object>>::new();
         let materials: HashMap<String, Arc<dyn Material>> = self
             .materials
             .iter()
