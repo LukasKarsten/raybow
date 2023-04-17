@@ -103,4 +103,9 @@ impl Aabb {
             Some(axis)
         }
     }
+
+    pub fn surface_area(&self) -> f32 {
+        let [x, y, z, _] = (self.maximum - self.minimum).0;
+        2.0 * (x * y + x * z + y * z)
+    }
 }

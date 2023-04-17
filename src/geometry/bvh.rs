@@ -10,6 +10,7 @@ use crate::{
 use super::{aabb::Aabb, Hit, Object};
 
 #[derive(Copy, Clone)]
+#[repr(align(8))]
 enum Node {
     Leaf { offset: u32, length: u16 },
     Branch { idx: u32 },
@@ -173,11 +174,10 @@ fn build(
     offset: usize,
     branches: &mut Vec<Branch>,
 ) -> (Node, Aabb, usize) {
-    let centroid_bounds = centroid_bounds(objects);
-
-    match centroid_bounds.maximum_extent() {
-        None => build_leaf(objects, offset),
-        Some(split_dim) => build_branch(objects, offset, split_dim, centroid_bounds, branches),
+    if objects.len() <= 1 {
+        build_leaf(objects, offset)
+    } else {
+        build_branch(objects, offset, branches)
     }
 }
 
@@ -198,11 +198,9 @@ fn build_leaf(objects: &mut [ObjectInfo], offset: usize) -> (Node, Aabb, usize) 
 fn build_branch(
     objects: &mut [ObjectInfo],
     mut offset: usize,
-    split_dim: Dimension,
-    centroid_bounds: Aabb,
     branches: &mut Vec<Branch>,
 ) -> (Node, Aabb, usize) {
-    let splits = split_middle8(objects, centroid_bounds, split_dim);
+    let splits = split8(objects);
 
     let own_idx = branches.len();
     branches.push(Branch {
@@ -218,8 +216,8 @@ fn build_branch(
     let mut aabb: Option<Aabb> = None;
     for (i, split) in splits
         .into_iter()
+        .filter(|split| !split.is_empty())
         .enumerate()
-        .filter(|(_, split)| !split.is_empty())
     {
         let (child, child_aabb, child_max_depth) = build(split, offset, branches);
 
@@ -242,42 +240,73 @@ fn build_branch(
     (child, aabb.unwrap(), max_depth + 1)
 }
 
-fn centroid_bounds(objects: &[ObjectInfo]) -> Aabb {
-    let mut iter = objects.iter();
+fn split8(objects: &mut [ObjectInfo]) -> [&mut [ObjectInfo]; 8] {
+    let (s1_4, s5_8) = split(objects);
 
-    let first_obj = iter.next().expect("objects is not empty");
+    let (s1_2, s3_4) = split(s1_4);
+    let (s5_6, s7_8) = split(s5_8);
 
-    let mut aabb = Aabb {
-        minimum: first_obj.centroid,
-        maximum: first_obj.centroid,
-    };
-
-    for obj in iter {
-        aabb = aabb.merge_vector(&obj.centroid);
-    }
-
-    aabb
-}
-
-fn split_middle8(
-    objects: &mut [ObjectInfo],
-    centroid_bounds: Aabb,
-    split_dim: Dimension,
-) -> [&mut [ObjectInfo]; 8] {
-    let sum = centroid_bounds.maximum[split_dim] + centroid_bounds.minimum[split_dim];
-    const FACTOR: f32 = 0.125;
-
-    let (s1_4, s5_8) = split_middle(objects, sum * FACTOR * 4., split_dim);
-
-    let (s1_2, s3_4) = split_middle(s1_4, sum * FACTOR * 2., split_dim);
-    let (s5_6, s7_8) = split_middle(s5_8, sum * FACTOR * 6., split_dim);
-
-    let (s1, s2) = split_middle(s1_2, sum * FACTOR * 1., split_dim);
-    let (s3, s4) = split_middle(s3_4, sum * FACTOR * 3., split_dim);
-    let (s5, s6) = split_middle(s5_6, sum * FACTOR * 5., split_dim);
-    let (s7, s8) = split_middle(s7_8, sum * FACTOR * 7., split_dim);
+    let (s1, s2) = split(s1_2);
+    let (s3, s4) = split(s3_4);
+    let (s5, s6) = split(s5_6);
+    let (s7, s8) = split(s7_8);
 
     [s1, s2, s3, s4, s5, s6, s7, s8]
+}
+
+fn split(objects: &mut [ObjectInfo]) -> (&mut [ObjectInfo], &mut [ObjectInfo]) {
+    match objects.len() {
+        0 => (&mut [], &mut []),
+        1 => (objects, &mut []),
+        2 => objects.split_at_mut(1),
+        _ => split_sah(objects),
+    }
+}
+
+fn split_sah(objects: &mut [ObjectInfo]) -> (&mut [ObjectInfo], &mut [ObjectInfo]) {
+    let mut best_cost = f32::INFINITY;
+    let mut best_split = None;
+
+    for axis in [Dimension::X, Dimension::Y, Dimension::Z] {
+        for object in objects.iter() {
+            let pos = object.centroid[axis];
+
+            let cost = calc_sah(objects, pos, axis);
+            if cost < best_cost {
+                best_cost = cost;
+                best_split = Some((pos, axis));
+            }
+        }
+    }
+
+    let (pos, axis) = best_split.expect("objects.len() > 0");
+    split_middle(objects, pos, axis)
+}
+
+fn calc_sah(objects: &[ObjectInfo], pos: f32, axis: Dimension) -> f32 {
+    let mut left_count = 0;
+    let mut right_count = 0;
+
+    let mut left_aabb: Option<Aabb> = None;
+    let mut right_aabb: Option<Aabb> = None;
+
+    for obj in objects {
+        let aabb = obj.bounds;
+        let centroid = obj.centroid[axis];
+
+        if centroid < pos {
+            left_count += 1;
+            left_aabb = left_aabb.map(|aabb| aabb.merge(&aabb)).or(Some(aabb));
+        } else {
+            right_count += 1;
+            right_aabb = right_aabb.map(|aabb| aabb.merge(&aabb)).or(Some(aabb));
+        }
+    }
+
+    let left_area = left_aabb.map_or(0.0, |aabb| aabb.surface_area());
+    let right_area = right_aabb.map_or(0.0, |aabb| aabb.surface_area());
+
+    left_area * left_count as f32 + right_area * right_count as f32
 }
 
 fn split_middle(
