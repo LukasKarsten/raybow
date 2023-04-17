@@ -1,7 +1,8 @@
 use std::{
     arch::x86_64::*,
+    fmt::{self, Write},
     mem::MaybeUninit,
-    ops::{Add, Div, Index, Mul, Neg, Sub},
+    ops::{Add, Deref, DerefMut, Div, Index, Mul, Neg, Sub},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -163,6 +164,12 @@ impl From<Vector> for [f32; 3] {
     }
 }
 
+impl From<[f32; 3]> for Vector {
+    fn from([x, y, z]: [f32; 3]) -> Self {
+        Self::from_xyzw(x, y, z, 0.0)
+    }
+}
+
 impl Add<Vector> for Vector {
     type Output = Self;
 
@@ -236,6 +243,254 @@ impl Index<Dimension> for Vector {
 
     fn index(&self, index: Dimension) -> &Self::Output {
         &self.0[usize::from(index as u8)]
+    }
+}
+
+#[derive(Default, Clone, Copy, PartialEq)]
+#[repr(C, align(32))]
+struct F32x8([f32; 8]);
+
+impl Deref for F32x8 {
+    type Target = [f32; 8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for F32x8 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[derive(Default, Clone, Copy, PartialEq)]
+pub struct Vector3x8 {
+    x: F32x8,
+    y: F32x8,
+    z: F32x8,
+}
+
+impl Vector3x8 {
+    pub const ZERO: Self = Self {
+        x: F32x8([0.0; 8]),
+        y: F32x8([0.0; 8]),
+        z: F32x8([0.0; 8]),
+    };
+
+    pub fn new(x: [f32; 8], y: [f32; 8], z: [f32; 8]) -> Self {
+        Self {
+            x: F32x8(x),
+            y: F32x8(y),
+            z: F32x8(z),
+        }
+    }
+
+    pub fn from_vecs(vecs: [[f32; 3]; 8]) -> Self {
+        let mut x = [0.0; 8];
+        let mut y = [0.0; 8];
+        let mut z = [0.0; 8];
+        for i in 0..8 {
+            x[i] = vecs[i][0];
+            y[i] = vecs[i][1];
+            z[i] = vecs[i][2];
+        }
+        Self::new(x, y, z)
+    }
+
+    pub fn set_vec(&mut self, idx: usize, vec: [f32; 3]) {
+        self.x[idx] = vec[0];
+        self.y[idx] = vec[1];
+        self.z[idx] = vec[2];
+    }
+
+    pub fn get_vec(&self, idx: usize) -> [f32; 3] {
+        [self.x[idx], self.y[idx], self.z[idx]]
+    }
+
+    pub fn cross(&self, other: &Self) -> Self {
+        let mut cross = Self::default();
+
+        for i in 0..8 {
+            cross.x[i] = self.y[i] * other.z[i] - self.z[i] * other.y[i];
+            cross.y[i] = self.z[i] * other.x[i] - self.x[i] * other.z[i];
+            cross.z[i] = self.x[i] * other.y[i] - self.y[i] * other.x[i];
+        }
+
+        cross
+    }
+
+    pub fn dot(&self, other: &Self) -> [f32; 8] {
+        let x = self.x.iter().zip(other.x.iter()).map(|(a, b)| a * b);
+        let y = self.y.iter().zip(other.y.iter()).map(|(a, b)| a * b);
+        let z = self.z.iter().zip(other.z.iter()).map(|(a, b)| a * b);
+
+        let mut dot = [0.0; 8];
+        for (i, (x, (y, z))) in x.zip(y.zip(z)).enumerate() {
+            dot[i] = x + y + z;
+        }
+
+        dot
+    }
+
+    pub fn magnitude_squared(&self) -> [f32; 8] {
+        self.dot(self)
+    }
+
+    pub fn magnitude(&self) -> [f32; 8] {
+        self.magnitude_squared().map(f32::sqrt)
+    }
+
+    pub fn normalize_unchecked(&self) -> Self {
+        let mag = self.magnitude();
+
+        let mut result = Self::default();
+
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..8 {
+            result.x[i] = self.x[i] / mag[i];
+            result.y[i] = self.y[i] / mag[i];
+            result.z[i] = self.z[i] / mag[i];
+        }
+
+        result
+    }
+
+    fn map(&self, f: impl FnMut(f32) -> f32 + Copy) -> Self {
+        Self {
+            x: F32x8(self.x.map(f)),
+            y: F32x8(self.y.map(f)),
+            z: F32x8(self.z.map(f)),
+        }
+    }
+
+    fn zip_map(&self, other: &Self, f: impl FnMut(f32, f32) -> f32 + Copy) -> Self {
+        fn zip_map(a: &F32x8, b: &F32x8, mut f: impl FnMut(f32, f32) -> f32 + Copy) -> F32x8 {
+            let mut result = F32x8::default();
+            for i in 0..8 {
+                result[i] = f(a[i], b[i]);
+            }
+            result
+        }
+        Self {
+            x: zip_map(&self.x, &other.x, f),
+            y: zip_map(&self.y, &other.y, f),
+            z: zip_map(&self.z, &other.z, f),
+        }
+    }
+
+    pub fn reciprocal(&self) -> Self {
+        self.map(|a| 1.0 / a)
+    }
+
+    pub fn min(&self, other: &Self) -> Self {
+        self.zip_map(other, f32::min)
+    }
+
+    pub fn max(&self, other: &Self) -> Self {
+        self.zip_map(other, f32::max)
+    }
+
+    pub fn x(&self) -> &[f32; 8] {
+        &self.x
+    }
+
+    pub fn y(&self) -> &[f32; 8] {
+        &self.y
+    }
+
+    pub fn z(&self) -> &[f32; 8] {
+        &self.z
+    }
+}
+
+impl Add<Self> for Vector3x8 {
+    type Output = Vector3x8;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        self.zip_map(&rhs, f32::add)
+    }
+}
+
+impl Sub<Self> for Vector3x8 {
+    type Output = Vector3x8;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.zip_map(&rhs, f32::sub)
+    }
+}
+
+impl Mul<Self> for Vector3x8 {
+    type Output = Vector3x8;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        self.zip_map(&rhs, f32::mul)
+    }
+}
+
+impl Mul<f32> for Vector3x8 {
+    type Output = Vector3x8;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        self.map(|a| a * rhs)
+    }
+}
+
+impl Mul<Vector3x8> for f32 {
+    type Output = <Vector3x8 as Mul<Self>>::Output;
+
+    fn mul(self, rhs: Vector3x8) -> Self::Output {
+        rhs * self
+    }
+}
+
+impl Div<f32> for Vector3x8 {
+    type Output = Vector3x8;
+
+    fn div(self, rhs: f32) -> Self::Output {
+        self.map(|a| a / rhs)
+    }
+}
+
+impl Neg for Vector3x8 {
+    type Output = Vector3x8;
+
+    fn neg(self) -> Self::Output {
+        self.map(f32::neg)
+    }
+}
+
+impl From<Vector> for Vector3x8 {
+    fn from(vec: Vector) -> Self {
+        Self::new([vec.x(); 8], [vec.y(); 8], [vec.z(); 8])
+    }
+}
+
+impl fmt::Debug for Vector3x8 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Vector3x8(")?;
+
+        for i in 0..8 {
+            if f.alternate() {
+                f.write_fmt(format_args!("\n    {}: [", i))?;
+            } else {
+                if i != 0 {
+                    f.write_str(", ")?;
+                }
+                f.write_fmt(format_args!("{}:[", i))?;
+            }
+            self.x[i].fmt(f)?;
+            f.write_str(", ")?;
+            self.y[i].fmt(f)?;
+            f.write_str(", ")?;
+            self.z[i].fmt(f)?;
+            f.write_char(']')?;
+        }
+
+        if f.alternate() {
+            f.write_char('\n')?;
+        }
+        f.write_char(')')
     }
 }
 

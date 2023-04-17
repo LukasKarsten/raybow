@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
 use aabb::Aabb;
 pub use sphere::Sphere;
@@ -9,9 +9,35 @@ mod aabb;
 pub mod bvh;
 mod sphere;
 
-pub trait Hittable: Send + Sync {
+pub trait Object: Send + Sync {
     fn hit(&self, ray: Ray, t_range: Range<f32>) -> Option<Hit>;
+
     fn bounding_box(&self) -> Aabb;
+
+    fn centroid(&self) -> Vector {
+        let bounds = self.bounding_box();
+        (bounds.minimum + bounds.maximum) * 0.5
+    }
+}
+
+impl Object for Box<dyn Object> {
+    fn hit(&self, ray: Ray, t_range: Range<f32>) -> Option<Hit> {
+        self.as_ref().hit(ray, t_range)
+    }
+
+    fn bounding_box(&self) -> Aabb {
+        self.as_ref().bounding_box()
+    }
+}
+
+impl Object for Arc<dyn Object> {
+    fn hit(&self, ray: Ray, t_range: Range<f32>) -> Option<Hit> {
+        self.as_ref().hit(ray, t_range)
+    }
+
+    fn bounding_box(&self) -> Aabb {
+        self.as_ref().bounding_box()
+    }
 }
 
 pub struct Hit<'m> {

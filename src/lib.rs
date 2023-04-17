@@ -12,10 +12,10 @@ use std::{
 };
 
 use bumpalo::Bump;
-use geometry::Hittable;
+use geometry::Object;
 use material::{MaterialHitResult, Reflection};
 
-use crate::{geometry::bvh::LinearTree, philox::Philox4x32_10};
+use crate::{geometry::bvh::Bvh, philox::Philox4x32_10};
 
 use self::ray::Ray;
 
@@ -63,7 +63,7 @@ pub fn render(
     image: &mut Image,
     rays_per_pixel: u32,
     camera: &Camera,
-    objects: Vec<Arc<dyn Hittable>>,
+    objects: Vec<Arc<dyn Object>>,
     background: Color,
     seed: u64,
 ) {
@@ -72,7 +72,7 @@ pub fn render(
     let image_width = image.width();
     let image_height = image.height();
 
-    let bvh = LinearTree::new(objects);
+    let bvh = Bvh::new(&objects);
 
     let cpus = num_cpus::get();
 
@@ -117,7 +117,7 @@ unsafe fn compute_pixels(
     image_height: u32,
     rays_per_pixel: u32,
     camera: &Camera,
-    bvh: &LinearTree,
+    bvh: &Bvh<Arc<dyn Object>>,
     background: Color,
     seed: u64,
     next_pixel: &AtomicU32,
@@ -181,7 +181,7 @@ unsafe fn compute_pixels(
 
 fn ray_color(
     ray: Ray,
-    bvh: &LinearTree,
+    bvh: &Bvh<Arc<dyn Object>>,
     max_bounces: u32,
     state: &mut RayState,
     background: Color,
@@ -189,6 +189,8 @@ fn ray_color(
     if max_bounces == 0 {
         return Color::BLACK;
     }
+
+    state.arena().reset();
 
     match bvh.hit(ray, state.arena()) {
         Some(hit) => {
