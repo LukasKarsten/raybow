@@ -10,7 +10,6 @@ use crate::{
 use super::{aabb::Aabb, Hit, Object};
 
 #[derive(Copy, Clone)]
-#[repr(align(8))]
 enum Node {
     Leaf { offset: u32, length: u16 },
     Branch { idx: u32 },
