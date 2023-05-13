@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt, path::Path, sync::Arc};
 
 use raybow::{
-    geometry::{Object, Sphere},
+    geometry::{bvh::Bvh, Object, Sphere},
     material::{Dialectric, DiffuseLight, Lambertian, Material, Metal},
     vector::Vector,
     Camera, Color,
@@ -32,7 +32,7 @@ struct CameraDesc {
     #[serde(default = "default_up_vector")]
     up: (f32, f32, f32),
     vfov: f32,
-    focus_distance: f32,
+    focus_distance: Option<f32>,
     aperture: f32,
 }
 
@@ -126,6 +126,11 @@ enum ObjectDesc {
         radius: f32,
         material: String,
     },
+    Mesh {
+        vertices: Vec<f32>,
+        indices: Vec<u32>,
+        material: String,
+    },
 }
 
 #[derive(Deserialize)]
@@ -144,14 +149,18 @@ impl Scene {
 
     pub fn construct_camera(&self, aspect_ratio: f32) -> Camera {
         let desc = &self.camera;
+        let position = desc.position.into();
+        let lookat = desc.lookat.into();
+
         Camera::new(
-            desc.position.into(),
-            desc.lookat.into(),
+            position,
+            lookat,
             Vector::from_xyz(desc.up.0, desc.up.1, desc.up.2),
             desc.vfov,
             aspect_ratio,
             desc.aperture,
-            desc.focus_distance,
+            desc.focus_distance
+                .unwrap_or_else(|| (lookat - position).length()),
         )
     }
 
@@ -173,6 +182,19 @@ impl Scene {
                     let material = materials.get(material).expect("undefined material");
                     let sphere = Sphere::new((*center).into(), *radius, Arc::clone(material));
                     objects.push(Arc::new(sphere));
+                }
+                ObjectDesc::Mesh {
+                    vertices,
+                    indices,
+                    material,
+                } => {
+                    let material = materials.get(material).expect("undefined material");
+                    let mesh = raybow::geometry::TriangleMesh::new(
+                        vertices.clone().into_boxed_slice(),
+                        indices.clone().into_boxed_slice(),
+                        Arc::clone(material),
+                    );
+                    objects.push(Arc::new(Bvh::new(mesh)));
                 }
             }
         }

@@ -7,7 +7,7 @@ use crate::{
     vector::{Dimension, Vector, Vector3x8},
 };
 
-use super::{aabb::Aabb, Hit, Object};
+use super::{aabb::Aabb, Hit, Object, ObjectList};
 
 #[derive(Copy, Clone)]
 enum Node {
@@ -22,8 +22,9 @@ struct Branch {
     children: [Node; 8],
 }
 
-pub struct Bvh<T> {
-    objects: Vec<T>,
+pub struct Bvh<L> {
+    object_list: L,
+    bounding_box: Aabb,
     branches: Box<[Branch]>,
     root: Node,
     max_depth: usize,
@@ -35,36 +36,45 @@ struct ObjectInfo {
     idx: usize,
 }
 
-impl<T: Object + Clone> Bvh<T> {
-    pub fn new(objects: &[T]) -> Self {
-        let mut obj_infos: Vec<_> = objects
-            .iter()
-            .enumerate()
-            .map(|(idx, obj)| ObjectInfo {
-                centroid: obj.centroid(),
-                bounds: obj.bounding_box(),
+impl<L: ObjectList<Object = O>, O> Bvh<L> {
+    pub fn new(mut object_list: L) -> Self {
+        let mut obj_infos: Vec<_> = (0..object_list.len())
+            .map(|idx| ObjectInfo {
+                centroid: object_list.centroid(idx),
+                bounds: object_list.bounding_box(idx),
                 idx,
             })
             .collect();
 
         let mut branches = Vec::new();
 
-        let (root, _aabb, max_depth) = build(obj_infos.as_mut_slice(), 0, &mut branches);
+        let (root, aabb, max_depth) = build(obj_infos.as_mut_slice(), 0, &mut branches);
 
-        let objects = obj_infos
-            .into_iter()
-            .map(|obj| objects[obj.idx].clone())
-            .collect();
+        // Reorder objects
+        let objects = object_list.objects_mut();
+        for i in 0..objects.len() {
+            let mut j = obj_infos[i].idx;
+            while j < i {
+                // everything before i has been swapped, so we need to follow the chain of swaps to
+                // find our actual target object
+                j = obj_infos[j].idx;
+            }
+            obj_infos[i].idx = j;
+            objects.swap(i, j);
+        }
 
         Self {
-            objects,
+            object_list,
+            bounding_box: aabb,
             branches: branches.into_boxed_slice(),
             root,
             max_depth,
         }
     }
+}
 
-    pub fn hit(&self, ray: Ray, arena: &Bump) -> Option<Hit> {
+impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
+    fn hit(&self, ray: Ray, mut t_range: Range<f32>, arena: &Bump) -> Option<Hit> {
         let pending_nodes_cap = self.max_depth * 7 + 1;
         let pending_nodes = arena
             .alloc_layout(Layout::array::<Node>(pending_nodes_cap).unwrap())
@@ -75,7 +85,6 @@ impl<T: Object + Clone> Bvh<T> {
         }
         let mut pending_nodes_len = 1;
 
-        let mut nearest_t = f32::INFINITY;
         let mut nearest_hit = None;
 
         loop {
@@ -89,9 +98,12 @@ impl<T: Object + Clone> Bvh<T> {
 
             match node {
                 Node::Leaf { offset, length } => {
-                    for obj in &self.objects[offset as usize..offset as usize + length as usize] {
-                        if let Some(hit) = obj.hit(ray, 0.0001..nearest_t) {
-                            nearest_t = hit.t;
+                    let start = offset as usize;
+                    let end = start + length as usize;
+
+                    for i in start..end {
+                        if let Some(hit) = self.object_list.hit(ray, t_range.clone(), i, arena) {
+                            t_range.end = hit.t;
                             nearest_hit = Some(hit);
                         }
                     }
@@ -100,7 +112,7 @@ impl<T: Object + Clone> Bvh<T> {
                     let branch = &self.branches[idx as usize];
 
                     let mut mask =
-                        intersections(ray, branch.aabb_min, branch.aabb_max, 0.0001..nearest_t);
+                        intersections(ray, branch.aabb_min, branch.aabb_max, t_range.clone());
 
                     loop {
                         let idx = mask.trailing_zeros();
@@ -119,6 +131,10 @@ impl<T: Object + Clone> Bvh<T> {
         }
 
         nearest_hit
+    }
+
+    fn bounding_box(&self) -> Aabb {
+        self.bounding_box
     }
 }
 
@@ -185,7 +201,7 @@ fn build_leaf(objects: &mut [ObjectInfo], offset: usize) -> (Node, Aabb, usize) 
         .iter()
         .map(|obj| obj.bounds)
         .reduce(|a, b| a.merge(&b))
-        .unwrap();
+        .unwrap_or(Aabb::ZERO);
 
     let child = Node::Leaf {
         offset: offset as u32,

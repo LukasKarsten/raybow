@@ -1,5 +1,7 @@
 use std::{ops::Range, sync::Arc};
 
+use bumpalo::Bump;
+
 use crate::{material::Material, ray::Ray, vector::Vector};
 
 use super::{Aabb, Hit, Object};
@@ -21,7 +23,7 @@ impl Sphere {
 }
 
 impl Object for Sphere {
-    fn hit(&self, ray: Ray, t_range: Range<f32>) -> Option<Hit> {
+    fn hit(&self, ray: Ray, t_range: Range<f32>, _: &Bump) -> Option<Hit> {
         let oc = self.center - ray.origin;
         let tca = oc.dot(ray.velocity);
         if tca < 0.0 {

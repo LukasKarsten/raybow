@@ -144,6 +144,27 @@ impl Vector {
         Self(self.0.map(|v| 1.0 / v))
     }
 
+    #[cfg(feature = "simd")]
+    pub fn abs(self) -> Self {
+        unsafe { Self::from_simd(_mm_andnot_ps(_mm_set1_ps(-0.0), self.to_simd())) }
+    }
+
+    #[cfg(not(feature = "simd"))]
+    pub fn abs(self) -> Self {
+        Self(self.0.map(|v| v.abs()))
+    }
+
+    pub fn largest_axis(self) -> Dimension {
+        let [x, y, z, _] = self.0;
+        if x > y && x > z {
+            Dimension::X
+        } else if y > z {
+            Dimension::Y
+        } else {
+            Dimension::Z
+        }
+    }
+
     pub fn to_simd(&self) -> __m128 {
         unsafe { _mm_load_ps(&self.0 as _) }
     }

@@ -72,7 +72,7 @@ pub fn render(
     let image_width = image.width();
     let image_height = image.height();
 
-    let bvh = Bvh::new(&objects);
+    let bvh = Bvh::new(objects);
 
     let cpus = num_cpus::get();
 
@@ -117,7 +117,7 @@ unsafe fn compute_pixels(
     image_height: u32,
     rays_per_pixel: u32,
     camera: &Camera,
-    bvh: &Bvh<Arc<dyn Object>>,
+    bvh: &Bvh<Vec<Arc<dyn Object>>>,
     background: Color,
     seed: u64,
     next_pixel: &AtomicU32,
@@ -181,7 +181,7 @@ unsafe fn compute_pixels(
 
 fn ray_color(
     ray: Ray,
-    bvh: &Bvh<Arc<dyn Object>>,
+    bvh: &Bvh<Vec<Arc<dyn Object>>>,
     max_bounces: u32,
     state: &mut RayState,
     background: Color,
@@ -192,7 +192,7 @@ fn ray_color(
 
     state.arena().reset();
 
-    match bvh.hit(ray, state.arena()) {
+    match bvh.hit(ray, 0.0001..f32::INFINITY, state.arena()) {
         Some(hit) => {
             let MaterialHitResult {
                 reflection: scatter_info,
