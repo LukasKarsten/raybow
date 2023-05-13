@@ -17,6 +17,7 @@ bumpalo = "3.12.0"
 num_cpus = "1.15.0"
 png = "0.17.7"
 exr = "1.6.3"
+bytemuck = { version = "1.13.1", features = ["extern_crate_alloc", "derive"] }
 
 [profile.release]
 lto = "fat"
