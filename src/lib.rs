@@ -164,7 +164,7 @@ unsafe fn compute_pixels(
 
             let u = (x as f32 + x_off) / image_width as f32;
             let v = (y as f32 + y_off) / image_height as f32;
-            let ray = camera.get_ray(u, 1.0 - v, &state);
+            let ray = camera.get_ray(1.0 - u, 1.0 - v, &state);
 
             color += ray_color(ray, bvh, 50, &mut state, background);
 
