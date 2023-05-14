@@ -190,26 +190,36 @@ fn ray_color(
         return Color::BLACK;
     }
 
-    state.arena().reset();
+    let mut ray = ray;
+    let mut emitting = Color::BLACK;
+    let mut attenuation = Color::WHITE;
 
-    match bvh.hit(ray, 0.0001..f32::INFINITY, state.arena()) {
-        Some(hit) => {
-            let MaterialHitResult {
-                reflection: scatter_info,
-                emission: emitting,
-            } = hit.material.hit(&hit, state);
-            match scatter_info {
-                Some(Reflection {
-                    ray: scatter_ray,
-                    attenuation,
-                }) => {
-                    let next_color =
-                        ray_color(scatter_ray, bvh, max_bounces - 1, state, background);
-                    emitting + attenuation * next_color
+    for _ in 0..max_bounces {
+        state.arena().reset();
+        match bvh.hit(ray, 0.0001..f32::INFINITY, state.arena()) {
+            Some(hit) => {
+                let MaterialHitResult {
+                    reflection: scatter_info,
+                    emission: emitting_new,
+                } = hit.material.hit(&hit, state);
+                emitting += attenuation * emitting_new;
+                match scatter_info {
+                    Some(Reflection {
+                        ray: scatter_ray,
+                        attenuation: attenuation_new,
+                    }) => {
+                        ray = scatter_ray;
+                        attenuation *= attenuation_new;
+                    }
+                    None => break,
                 }
-                None => emitting,
+            }
+            None => {
+                emitting += attenuation * background;
+                break;
             }
         }
-        None => background,
     }
+
+    emitting
 }
