@@ -13,7 +13,7 @@ use std::{
 
 use bumpalo::Bump;
 use geometry::Object;
-use material::{MaterialHitResult, Reflection};
+use material::Reflection;
 
 use crate::{geometry::bvh::Bvh, philox::Philox4x32_10};
 
@@ -180,17 +180,12 @@ unsafe fn compute_pixels(
 }
 
 fn ray_color(
-    ray: Ray,
+    mut ray: Ray,
     bvh: &Bvh<Vec<Arc<dyn Object>>>,
     max_bounces: u32,
     state: &mut RayState,
     background: Color,
 ) -> Color {
-    if max_bounces == 0 {
-        return Color::BLACK;
-    }
-
-    let mut ray = ray;
     let mut emitting = Color::BLACK;
     let mut attenuation = Color::WHITE;
 
@@ -198,12 +193,9 @@ fn ray_color(
         state.arena().reset();
         match bvh.hit(ray, 0.0001..f32::INFINITY, state.arena()) {
             Some(hit) => {
-                let MaterialHitResult {
-                    reflection: scatter_info,
-                    emission: emitting_new,
-                } = hit.material.hit(&hit, state);
-                emitting += attenuation * emitting_new;
-                match scatter_info {
+                let material_hit = hit.material.hit(&hit, state);
+                emitting += attenuation * material_hit.emission;
+                match material_hit.reflection {
                     Some(Reflection {
                         ray: scatter_ray,
                         attenuation: attenuation_new,
