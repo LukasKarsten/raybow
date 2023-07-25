@@ -4,7 +4,7 @@ Scene(
         position: (10, 2, 0),
         lookat: (0, 1, 0),
         vfov: 20,
-        focus_distance: 10,
+        focus_distance: Some(10),
         aperture: 0.1,
     ),
     materials: {
