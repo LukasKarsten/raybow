@@ -1,6 +1,10 @@
 use std::f32::consts::TAU;
 
-use crate::{ray::Ray, vector::Vector, RayState, RngKey};
+use crate::{
+    ray::Ray,
+    raybow::{RayState, RngKey},
+    vector::Vector,
+};
 
 pub struct Camera {
     origin: Vector,

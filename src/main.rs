@@ -1,3 +1,5 @@
+#![feature(sync_unsafe_cell)]
+
 use std::{
     fs::File,
     io::BufWriter,
@@ -7,20 +9,29 @@ use std::{
 };
 
 use argh::FromArgs;
+use camera::Camera;
+use color::Color;
 use exr::image::{
     write::{channels::GetPixel, WritableImage},
     Image as ExrImage, SpecificChannels,
 };
+use geometry::{Object, Sphere};
+use image::Image;
+use material::{DiffuseLight, Lambertian, Material, Metal};
 use rapid_qoi::{Colors, Qoi};
-use raybow::{
-    geometry::{Object, Sphere},
-    material::{DiffuseLight, Lambertian, Material, Metal},
-    vector::Vector,
-    Camera, Color, Image,
-};
 use scene::Scene;
+use vector::Vector;
 
+mod camera;
+mod color;
+mod geometry;
+mod image;
+mod material;
+mod philox;
+mod ray;
+mod raybow;
 mod scene;
+mod vector;
 
 enum OutputFormat {
     Exr,

@@ -25,7 +25,7 @@ impl Sphere {
 impl Object for Sphere {
     fn hit(&self, ray: Ray, t_range: Range<f32>, _: &Bump) -> Option<Hit> {
         let oc = self.center - ray.origin;
-        let tca = oc.dot(ray.velocity);
+        let tca = oc.dot(ray.direction);
         if tca < 0.0 {
             return None;
         }

@@ -125,25 +125,6 @@ impl Vector {
         Self::from_xyzw(x, y, z, w)
     }
 
-    pub fn sum(self) -> f32 {
-        self.0.into_iter().sum()
-    }
-
-    pub fn product3(self) -> f32 {
-        let [x, y, z, _] = self.0;
-        x * y * z
-    }
-
-    #[cfg(feature = "simd")]
-    pub fn reciprocal(self) -> Self {
-        unsafe { Self::from_simd(_mm_rcp_ps(self.to_simd())) }
-    }
-
-    #[cfg(not(feature = "simd"))]
-    pub fn reciprocal(self) -> Self {
-        Self(self.0.map(|v| 1.0 / v))
-    }
-
     #[cfg(feature = "simd")]
     pub fn abs(self) -> Self {
         unsafe { Self::from_simd(_mm_andnot_ps(_mm_set1_ps(-0.0), self.to_simd())) }
@@ -185,12 +166,6 @@ impl From<Vector> for [f32; 3] {
     }
 }
 
-impl From<[f32; 3]> for Vector {
-    fn from([x, y, z]: [f32; 3]) -> Self {
-        Self::from_xyzw(x, y, z, 0.0)
-    }
-}
-
 impl Add<Vector> for Vector {
     type Output = Self;
 
@@ -228,14 +203,6 @@ impl Mul<Vector> for Vector {
 
     fn mul(self, rhs: Vector) -> Self::Output {
         unsafe { Self::from_simd(_mm_mul_ps(self.to_simd(), rhs.to_simd())) }
-    }
-}
-
-impl Div<Vector> for Vector {
-    type Output = Self;
-
-    fn div(self, rhs: Vector) -> Self::Output {
-        unsafe { Self::from_simd(_mm_div_ps(self.to_simd(), rhs.to_simd())) }
     }
 }
 
@@ -315,117 +282,10 @@ impl Vector3x8 {
         z: F32x8([0.0; 8]),
     };
 
-    pub fn new(x: [f32; 8], y: [f32; 8], z: [f32; 8]) -> Self {
-        Self {
-            x: F32x8(x),
-            y: F32x8(y),
-            z: F32x8(z),
-        }
-    }
-
-    pub fn from_vecs(vecs: [[f32; 3]; 8]) -> Self {
-        let mut x = [0.0; 8];
-        let mut y = [0.0; 8];
-        let mut z = [0.0; 8];
-        for i in 0..8 {
-            x[i] = vecs[i][0];
-            y[i] = vecs[i][1];
-            z[i] = vecs[i][2];
-        }
-        Self::new(x, y, z)
-    }
-
     pub fn set_vec(&mut self, idx: usize, vec: [f32; 3]) {
         self.x[idx] = vec[0];
         self.y[idx] = vec[1];
         self.z[idx] = vec[2];
-    }
-
-    pub fn get_vec(&self, idx: usize) -> [f32; 3] {
-        [self.x[idx], self.y[idx], self.z[idx]]
-    }
-
-    pub fn cross(&self, other: &Self) -> Self {
-        let mut cross = Self::default();
-
-        for i in 0..8 {
-            cross.x[i] = self.y[i] * other.z[i] - self.z[i] * other.y[i];
-            cross.y[i] = self.z[i] * other.x[i] - self.x[i] * other.z[i];
-            cross.z[i] = self.x[i] * other.y[i] - self.y[i] * other.x[i];
-        }
-
-        cross
-    }
-
-    pub fn dot(&self, other: &Self) -> [f32; 8] {
-        let x = self.x.iter().zip(other.x.iter()).map(|(a, b)| a * b);
-        let y = self.y.iter().zip(other.y.iter()).map(|(a, b)| a * b);
-        let z = self.z.iter().zip(other.z.iter()).map(|(a, b)| a * b);
-
-        let mut dot = [0.0; 8];
-        for (i, (x, (y, z))) in x.zip(y.zip(z)).enumerate() {
-            dot[i] = x + y + z;
-        }
-
-        dot
-    }
-
-    pub fn magnitude_squared(&self) -> [f32; 8] {
-        self.dot(self)
-    }
-
-    pub fn magnitude(&self) -> [f32; 8] {
-        self.magnitude_squared().map(f32::sqrt)
-    }
-
-    pub fn normalize_unchecked(&self) -> Self {
-        let mag = self.magnitude();
-
-        let mut result = Self::default();
-
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..8 {
-            result.x[i] = self.x[i] / mag[i];
-            result.y[i] = self.y[i] / mag[i];
-            result.z[i] = self.z[i] / mag[i];
-        }
-
-        result
-    }
-
-    fn map(&self, f: impl FnMut(f32) -> f32 + Copy) -> Self {
-        Self {
-            x: F32x8(self.x.map(f)),
-            y: F32x8(self.y.map(f)),
-            z: F32x8(self.z.map(f)),
-        }
-    }
-
-    fn zip_map(&self, other: &Self, f: impl FnMut(f32, f32) -> f32 + Copy) -> Self {
-        fn zip_map(a: &F32x8, b: &F32x8, mut f: impl FnMut(f32, f32) -> f32 + Copy) -> F32x8 {
-            let mut result = F32x8::default();
-            for i in 0..8 {
-                result[i] = f(a[i], b[i]);
-            }
-            result
-        }
-        Self {
-            x: zip_map(&self.x, &other.x, f),
-            y: zip_map(&self.y, &other.y, f),
-            z: zip_map(&self.z, &other.z, f),
-        }
-    }
-
-    pub fn reciprocal(&self) -> Self {
-        self.map(|a| 1.0 / a)
-    }
-
-    pub fn min(&self, other: &Self) -> Self {
-        self.zip_map(other, f32::min)
-    }
-
-    pub fn max(&self, other: &Self) -> Self {
-        self.zip_map(other, f32::max)
     }
 
     pub fn x(&self) -> &[f32; 8] {
@@ -438,68 +298,6 @@ impl Vector3x8 {
 
     pub fn z(&self) -> &[f32; 8] {
         &self.z
-    }
-}
-
-impl Add<Self> for Vector3x8 {
-    type Output = Vector3x8;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        self.zip_map(&rhs, f32::add)
-    }
-}
-
-impl Sub<Self> for Vector3x8 {
-    type Output = Vector3x8;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        self.zip_map(&rhs, f32::sub)
-    }
-}
-
-impl Mul<Self> for Vector3x8 {
-    type Output = Vector3x8;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        self.zip_map(&rhs, f32::mul)
-    }
-}
-
-impl Mul<f32> for Vector3x8 {
-    type Output = Vector3x8;
-
-    fn mul(self, rhs: f32) -> Self::Output {
-        self.map(|a| a * rhs)
-    }
-}
-
-impl Mul<Vector3x8> for f32 {
-    type Output = <Vector3x8 as Mul<Self>>::Output;
-
-    fn mul(self, rhs: Vector3x8) -> Self::Output {
-        rhs * self
-    }
-}
-
-impl Div<f32> for Vector3x8 {
-    type Output = Vector3x8;
-
-    fn div(self, rhs: f32) -> Self::Output {
-        self.map(|a| a / rhs)
-    }
-}
-
-impl Neg for Vector3x8 {
-    type Output = Vector3x8;
-
-    fn neg(self) -> Self::Output {
-        self.map(f32::neg)
-    }
-}
-
-impl From<Vector> for Vector3x8 {
-    fn from(vec: Vector) -> Self {
-        Self::new([vec.x(); 8], [vec.y(); 8], [vec.z(); 8])
     }
 }
 
@@ -528,26 +326,5 @@ impl fmt::Debug for Vector3x8 {
             f.write_char('\n')?;
         }
         f.write_char(')')
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Vector;
-
-    #[test]
-    fn test_is_almost_zero() {
-        let v = Vector::from_xyzw(1.0, 0.0, -1.0, 0.0);
-        assert!(!v.is_almost_zero());
-
-        let v = Vector::from_xyzw(1e-9, 1e-9, 1e-9, 1e-9);
-        assert!(v.is_almost_zero());
-    }
-
-    #[test]
-    fn negate_vector() {
-        let v = Vector::from_xyzw(1.0, 2.0, 3.0, 4.0);
-        let v_neg = Vector::from_xyzw(-1.0, -2.0, -3.0, -4.0);
-        assert_eq!(-v, v_neg);
     }
 }

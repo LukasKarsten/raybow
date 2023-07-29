@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt, path::Path, sync::Arc};
 
-use raybow::{
+use crate::{
     geometry::{bvh::Bvh, Object, Sphere},
     material::{Dialectric, DiffuseLight, Lambertian, Material, Metal},
     vector::Vector,
@@ -189,7 +189,7 @@ impl Scene {
                     material,
                 } => {
                     let material = materials.get(material).expect("undefined material");
-                    let mesh = raybow::geometry::TriangleMesh::new(
+                    let mesh = crate::geometry::TriangleMesh::new(
                         vertices.clone().into_boxed_slice(),
                         indices.clone().into_boxed_slice(),
                         Arc::clone(material),

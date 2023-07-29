@@ -1,6 +1,12 @@
 use std::f32::consts::TAU;
 
-use crate::{color::Color, geometry::Hit, ray::Ray, vector::Vector, RayState, RngKey};
+use crate::{
+    color::Color,
+    geometry::Hit,
+    ray::Ray,
+    raybow::{RayState, RngKey},
+    vector::Vector,
+};
 
 pub use dialectric::Dialectric;
 pub use diffuse_light::DiffuseLight;

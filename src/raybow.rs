@@ -1,5 +1,3 @@
-#![feature(sync_unsafe_cell)]
-
 use std::{
     cell::SyncUnsafeCell,
     io::Write,
@@ -12,27 +10,19 @@ use std::{
 };
 
 use bumpalo::Bump;
-use geometry::Object;
-use material::Reflection;
 
-use crate::{geometry::bvh::Bvh, philox::Philox4x32_10};
-
-use self::ray::Ray;
-
-pub use self::{camera::Camera, color::Color, image::Image};
-
-mod camera;
-mod color;
-mod image;
-mod philox;
-mod ray;
-
-pub mod geometry;
-pub mod material;
-pub mod vector;
+use crate::{
+    camera::Camera,
+    color::Color,
+    geometry::{bvh::Bvh, Object},
+    image::Image,
+    material::Reflection,
+    philox::Philox4x32_10,
+    ray::Ray,
+};
 
 #[repr(u32)]
-enum RngKey {
+pub enum RngKey {
     RayPixelOffset,
     CameraLensPosition,
     ScatterDirection,
@@ -53,7 +43,7 @@ impl RayState {
         &mut self.arena
     }
 
-    fn gen_random_floats(&self, rng_key: RngKey) -> [f32; 4] {
+    pub fn gen_random_floats(&self, rng_key: RngKey) -> [f32; 4] {
         let ctr = [self.pixel_x, self.pixel_y, self.ray_number, rng_key as u32];
         self.philox.gen_f32s(ctr)
     }

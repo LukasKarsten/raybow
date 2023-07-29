@@ -1,4 +1,4 @@
-use crate::{geometry::Hit, Color, RayState};
+use crate::{geometry::Hit, raybow::RayState, Color};
 
 use super::{Material, MaterialHitResult};
 

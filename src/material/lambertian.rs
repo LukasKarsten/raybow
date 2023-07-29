@@ -1,4 +1,9 @@
-use crate::{color::Color, geometry::Hit, ray::Ray, RayState, RngKey};
+use crate::{
+    color::Color,
+    geometry::Hit,
+    ray::Ray,
+    raybow::{RayState, RngKey},
+};
 
 use super::{random_unit_vector, Material, MaterialHitResult};
 

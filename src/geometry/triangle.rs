@@ -44,56 +44,45 @@ impl ObjectList for TriangleMesh {
     type Object = Triangle;
 
     fn hit(&self, ray: Ray, t_range: Range<f32>, index: usize, _: &Bump) -> Option<Hit> {
-        let [v0, v1, v2] = self.fetch_vertices(index);
+        // https://jcgt.org/published/0002/01/05/paper.pdf
 
-        // translate so that the ray origin is at the origin
-        let v0t = v0 - ray.origin;
-        let v1t = v1 - ray.origin;
-        let v2t = v2 - ray.origin;
+        let ray_dir = ray.direction;
 
-        // find the largest axis of the ray direction
-        let kz = ray.velocity.abs().largest_axis() as usize;
+        let kz = ray.direction.abs().largest_axis() as usize;
         let kx = (kz + 1) % 3;
         let ky = (kx + 1) % 3;
 
-        // rotate so that the ray direction's largest axis is the z axis
-        let d = Vector::from_xyz(ray.velocity[kx], ray.velocity[ky], ray.velocity[kz]);
-        let v0t = Vector::from_xyz(v0t[kx], v0t[ky], v0t[kz]);
-        let v1t = Vector::from_xyz(v1t[kx], v1t[ky], v1t[kz]);
-        let v2t = Vector::from_xyz(v2t[kx], v2t[ky], v2t[kz]);
+        let sz = 1.0 / ray_dir[kz];
+        let sx = -ray_dir[kx] * sz;
+        let sy = -ray_dir[ky] * sz;
 
-        // shear so that the ray direction is aligned with the z axis (we ignore z for now)
-        let sz = 1.0 / d.z();
-        let sx = -d.x() * sz;
-        let sy = -d.y() * sz;
+        let points = self.fetch_vertices(index);
 
-        let v0t = Vector::from_xyz(v0t.x() + sx * v0t.z(), v0t.y() + sy * v0t.z(), v0t.z());
-        let v1t = Vector::from_xyz(v1t.x() + sx * v1t.z(), v1t.y() + sy * v1t.z(), v1t.z());
-        let v2t = Vector::from_xyz(v2t.x() + sx * v2t.z(), v2t.y() + sy * v2t.z(), v2t.z());
+        let [p1t, p2t, p3t] = points
+            .map(|p| p - ray.origin)
+            .map(|p| Vector::from_xyz(p[kx], p[ky], p[kz]))
+            .map(|p| Vector::from_xyz(p.x() + sx * p.z(), p.y() + sy * p.z(), p.z() * sz));
 
-        // compute edge functions
-        let mut e0 = v1t.x() * v2t.y() - v2t.x() * v1t.y();
-        let mut e1 = v2t.x() * v0t.y() - v0t.x() * v2t.y();
-        let mut e2 = v0t.x() * v1t.y() - v1t.x() * v0t.y();
+        let mut e1 = p2t.x() * p3t.y() - p3t.x() * p2t.y();
+        let mut e2 = p3t.x() * p1t.y() - p1t.x() * p3t.y();
+        let mut e3 = p1t.x() * p2t.y() - p2t.x() * p1t.y();
 
-        if e0 == 0.0 || e1 == 0.0 || e2 == 0.0 {
-            e0 = (v1t.x() as f64 * v2t.y() as f64 - v2t.x() as f64 * v1t.y() as f64) as f32;
-            e1 = (v2t.x() as f64 * v0t.y() as f64 - v0t.x() as f64 * v2t.y() as f64) as f32;
-            e2 = (v0t.x() as f64 * v1t.y() as f64 - v1t.x() as f64 * v0t.y() as f64) as f32;
+        if e1 == 0.0 || e2 == 0.0 || e3 == 0.0 {
+            e1 = (p2t.x() as f64 * p3t.y() as f64 - p3t.x() as f64 * p2t.y() as f64) as f32;
+            e2 = (p3t.x() as f64 * p1t.y() as f64 - p1t.x() as f64 * p3t.y() as f64) as f32;
+            e3 = (p1t.x() as f64 * p2t.y() as f64 - p2t.x() as f64 * p1t.y() as f64) as f32;
         }
 
-        if (e0 < 0.0 || e1 < 0.0 || e2 < 0.0) && (e0 > 0.0 || e1 > 0.0 || e2 > 0.0) {
+        if (e1 < 0.0 || e2 < 0.0 || e3 < 0.0) && (e1 > 0.0 || e2 > 0.0 || e3 > 0.0) {
             return None;
         }
-        let det = e0 + e1 + e2;
+
+        let det = e1 + e2 + e3;
         if det == 0.0 {
             return None;
         }
 
-        let z0 = v0t.z() * sz;
-        let z1 = v1t.z() * sz;
-        let z2 = v2t.z() * sz;
-        let t_scaled = e0 * z0 + e1 * z1 + e2 * z2;
+        let t_scaled = e1 * p1t.z() + e2 * p2t.z() + e3 * p3t.z();
         if (det < 0.0 && (t_scaled >= 0.0 || t_scaled < t_range.end * det))
             || (det > 0.0 && (t_scaled <= 0.0 || t_scaled > t_range.end * det))
         {
@@ -101,11 +90,11 @@ impl ObjectList for TriangleMesh {
         }
 
         let inv_det = 1.0 / det;
-        let b0 = e0 * inv_det;
         let b1 = e1 * inv_det;
         let b2 = e2 * inv_det;
+        let b3 = e3 * inv_det;
 
-        let point = b0 * v0 + b1 * v1 + b2 * v2;
+        let point = b1 * p1t + b2 * p2t + b3 * p3t;
 
         let t = t_scaled / det;
 
@@ -113,15 +102,15 @@ impl ObjectList for TriangleMesh {
             return None;
         }
 
-        let normal = (v1 - v0).cross3(v2 - v0).normalize_unchecked();
+        let normal = (p2t - p1t).cross3(p3t - p1t).normalize_unchecked();
         Some(Hit::new(point, normal, ray, t, self.material.as_ref()))
     }
 
     fn bounding_box(&self, index: usize) -> Aabb {
-        let [v0, v1, v2] = self.fetch_vertices(index);
+        let [p1, p2, p3] = self.fetch_vertices(index);
 
-        let minimum = v0.min(v1).min(v2);
-        let maximum = v0.max(v1).max(v2);
+        let minimum = p1.min(p2).min(p3);
+        let maximum = p1.max(p2).max(p3);
 
         Aabb { minimum, maximum }
     }

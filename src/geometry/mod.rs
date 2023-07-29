@@ -12,6 +12,37 @@ pub mod bvh;
 mod sphere;
 mod triangle;
 
+pub trait Object: Send + Sync {
+    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit>;
+
+    fn bounding_box(&self) -> Aabb;
+
+    fn centroid(&self) -> Vector {
+        let bounds = self.bounding_box();
+        (bounds.minimum + bounds.maximum) * 0.5
+    }
+}
+
+impl Object for Box<dyn Object> {
+    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit> {
+        self.as_ref().hit(ray, t_range, arena)
+    }
+
+    fn bounding_box(&self) -> Aabb {
+        self.as_ref().bounding_box()
+    }
+}
+
+impl Object for Arc<dyn Object> {
+    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit> {
+        self.as_ref().hit(ray, t_range, arena)
+    }
+
+    fn bounding_box(&self) -> Aabb {
+        self.as_ref().bounding_box()
+    }
+}
+
 #[allow(clippy::len_without_is_empty)]
 pub trait ObjectList {
     type Object;
@@ -54,37 +85,6 @@ impl<O: Object> ObjectList for Vec<O> {
     }
 }
 
-pub trait Object: Send + Sync {
-    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit>;
-
-    fn bounding_box(&self) -> Aabb;
-
-    fn centroid(&self) -> Vector {
-        let bounds = self.bounding_box();
-        (bounds.minimum + bounds.maximum) * 0.5
-    }
-}
-
-impl Object for Box<dyn Object> {
-    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit> {
-        self.as_ref().hit(ray, t_range, arena)
-    }
-
-    fn bounding_box(&self) -> Aabb {
-        self.as_ref().bounding_box()
-    }
-}
-
-impl Object for Arc<dyn Object> {
-    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit> {
-        self.as_ref().hit(ray, t_range, arena)
-    }
-
-    fn bounding_box(&self) -> Aabb {
-        self.as_ref().bounding_box()
-    }
-}
-
 pub struct Hit<'m> {
     pub point: Vector,
     pub normal: Vector,
@@ -102,7 +102,7 @@ impl<'m> Hit<'m> {
         t: f32,
         material: &'m dyn Material,
     ) -> Self {
-        let (normal, front_face) = if ray.velocity.dot(normal) < 0.0 {
+        let (normal, front_face) = if ray.direction.dot(normal) < 0.0 {
             (normal, true)
         } else {
             (-normal, false)

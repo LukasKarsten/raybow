@@ -1,4 +1,9 @@
-use crate::{color::Color, geometry::Hit, ray::Ray, RayState, RngKey};
+use crate::{
+    color::Color,
+    geometry::Hit,
+    ray::Ray,
+    raybow::{RayState, RngKey},
+};
 
 use super::{reflect, refract, Material, MaterialHitResult};
 
@@ -15,7 +20,7 @@ impl Material for Dialectric {
             self.index
         };
 
-        let unit_vel = hit.ray.velocity.normalize_unchecked();
+        let unit_vel = hit.ray.direction.normalize_unchecked();
 
         let cos_theta = (-unit_vel).dot(hit.normal).min(1.0);
         let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();

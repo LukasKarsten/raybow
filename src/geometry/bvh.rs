@@ -144,7 +144,7 @@ fn intersections(ray: Ray, aabb_min: Vector3x8, aabb_max: Vector3x8, t_range: Ra
     }
 
     unsafe {
-        let vel_rcp = 1.0 / ray.velocity;
+        let vel_rcp = 1.0 / ray.direction;
         let vel_rcp_x = _mm256_set1_ps(vel_rcp.x());
         let vel_rcp_y = _mm256_set1_ps(vel_rcp.y());
         let vel_rcp_z = _mm256_set1_ps(vel_rcp.z());
