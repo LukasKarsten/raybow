@@ -72,9 +72,15 @@ impl ObjectList for TriangleMesh {
         let v2t = Vector::from_xyz(v2t.x() + sx * v2t.z(), v2t.y() + sy * v2t.z(), v2t.z());
 
         // compute edge functions
-        let e0 = v1t.x() * v2t.y() - v2t.x() * v1t.y();
-        let e1 = v2t.x() * v0t.y() - v0t.x() * v2t.y();
-        let e2 = v0t.x() * v1t.y() - v1t.x() * v0t.y();
+        let mut e0 = v1t.x() * v2t.y() - v2t.x() * v1t.y();
+        let mut e1 = v2t.x() * v0t.y() - v0t.x() * v2t.y();
+        let mut e2 = v0t.x() * v1t.y() - v1t.x() * v0t.y();
+
+        if e0 == 0.0 || e1 == 0.0 || e2 == 0.0 {
+            e0 = (v1t.x() as f64 * v2t.y() as f64 - v2t.x() as f64 * v1t.y() as f64) as f32;
+            e1 = (v2t.x() as f64 * v0t.y() as f64 - v0t.x() as f64 * v2t.y() as f64) as f32;
+            e2 = (v0t.x() as f64 * v1t.y() as f64 - v1t.x() as f64 * v0t.y() as f64) as f32;
+        }
 
         if (e0 < 0.0 || e1 < 0.0 || e2 < 0.0) && (e0 > 0.0 || e1 > 0.0 || e2 > 0.0) {
             return None;
@@ -101,7 +107,7 @@ impl ObjectList for TriangleMesh {
 
         let point = b0 * v0 + b1 * v1 + b2 * v2;
 
-        let t = (point - ray.origin).length();
+        let t = t_scaled / det;
 
         if t < t_range.start || t > t_range.end {
             return None;

@@ -231,6 +231,22 @@ impl Mul<Vector> for Vector {
     }
 }
 
+impl Div<Vector> for Vector {
+    type Output = Self;
+
+    fn div(self, rhs: Vector) -> Self::Output {
+        unsafe { Self::from_simd(_mm_div_ps(self.to_simd(), rhs.to_simd())) }
+    }
+}
+
+impl Div<Vector> for f32 {
+    type Output = Vector;
+
+    fn div(self, rhs: Vector) -> Self::Output {
+        unsafe { Vector::from_simd(_mm_div_ps(_mm_set1_ps(self), rhs.to_simd())) }
+    }
+}
+
 impl Div<f32> for Vector {
     type Output = Self;
 

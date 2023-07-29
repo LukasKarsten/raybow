@@ -139,8 +139,12 @@ impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
 }
 
 fn intersections(ray: Ray, aabb_min: Vector3x8, aabb_max: Vector3x8, t_range: Range<f32>) -> u8 {
+    fn gamma(n: i32) -> f32 {
+        (n as f32 * f32::EPSILON) / (1.0 - n as f32 * f32::EPSILON)
+    }
+
     unsafe {
-        let vel_rcp = ray.velocity.reciprocal();
+        let vel_rcp = 1.0 / ray.velocity;
         let vel_rcp_x = _mm256_set1_ps(vel_rcp.x());
         let vel_rcp_y = _mm256_set1_ps(vel_rcp.y());
         let vel_rcp_z = _mm256_set1_ps(vel_rcp.z());
@@ -153,33 +157,31 @@ fn intersections(ray: Ray, aabb_min: Vector3x8, aabb_max: Vector3x8, t_range: Ra
         let aabb_min_y = _mm256_load_ps(aabb_min.y().as_ptr());
         let aabb_min_z = _mm256_load_ps(aabb_min.z().as_ptr());
 
-        let t0_x = _mm256_mul_ps(_mm256_sub_ps(aabb_min_x, origin_x), vel_rcp_x);
-        let t0_y = _mm256_mul_ps(_mm256_sub_ps(aabb_min_y, origin_y), vel_rcp_y);
-        let t0_z = _mm256_mul_ps(_mm256_sub_ps(aabb_min_z, origin_z), vel_rcp_z);
-
         let aabb_max_x = _mm256_load_ps(aabb_max.x().as_ptr());
         let aabb_max_y = _mm256_load_ps(aabb_max.y().as_ptr());
         let aabb_max_z = _mm256_load_ps(aabb_max.z().as_ptr());
+
+        let t0_x = _mm256_mul_ps(_mm256_sub_ps(aabb_min_x, origin_x), vel_rcp_x);
+        let t0_y = _mm256_mul_ps(_mm256_sub_ps(aabb_min_y, origin_y), vel_rcp_y);
+        let t0_z = _mm256_mul_ps(_mm256_sub_ps(aabb_min_z, origin_z), vel_rcp_z);
 
         let t1_x = _mm256_mul_ps(_mm256_sub_ps(aabb_max_x, origin_x), vel_rcp_x);
         let t1_y = _mm256_mul_ps(_mm256_sub_ps(aabb_max_y, origin_y), vel_rcp_y);
         let t1_z = _mm256_mul_ps(_mm256_sub_ps(aabb_max_z, origin_z), vel_rcp_z);
 
-        let min_x = _mm256_min_ps(t0_x, t1_x);
-        let min_y = _mm256_min_ps(t0_y, t1_y);
-        let min_z = _mm256_min_ps(t0_z, t1_z);
+        let mut tmin = _mm256_set1_ps(t_range.start);
+        tmin = _mm256_min_ps(_mm256_max_ps(t0_x, tmin), _mm256_max_ps(t1_x, tmin));
+        tmin = _mm256_min_ps(_mm256_max_ps(t0_y, tmin), _mm256_max_ps(t1_y, tmin));
+        tmin = _mm256_min_ps(_mm256_max_ps(t0_z, tmin), _mm256_max_ps(t1_z, tmin));
 
-        let max_x = _mm256_max_ps(t0_x, t1_x);
-        let max_y = _mm256_max_ps(t0_y, t1_y);
-        let max_z = _mm256_max_ps(t0_z, t1_z);
+        let mut tmax = _mm256_set1_ps(t_range.end);
+        tmax = _mm256_max_ps(_mm256_min_ps(t0_x, tmax), _mm256_min_ps(t1_x, tmax));
+        tmax = _mm256_max_ps(_mm256_min_ps(t0_y, tmax), _mm256_min_ps(t1_y, tmax));
+        tmax = _mm256_max_ps(_mm256_min_ps(t0_z, tmax), _mm256_min_ps(t1_z, tmax));
 
-        let t_start = _mm256_set1_ps(t_range.start);
-        let tmin = _mm256_max_ps(min_x, _mm256_max_ps(min_y, _mm256_max_ps(min_z, t_start)));
-
-        let t_end = _mm256_set1_ps(t_range.end);
-        let tmax = _mm256_min_ps(max_x, _mm256_min_ps(max_y, _mm256_min_ps(max_z, t_end)));
-
+        tmax = _mm256_mul_ps(tmax, _mm256_set1_ps(1.0 + 2.0 * gamma(3)));
         let mask = _mm256_cmp_ps(tmin, tmax, _CMP_LE_OQ);
+
         _mm256_movemask_ps(mask) as u8
     }
 }
