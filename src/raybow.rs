@@ -49,22 +49,22 @@ impl RayState {
     }
 }
 
-pub fn render(
-    image: &mut Image,
-    rays_per_pixel: u32,
-    camera: &Camera,
-    objects: Vec<Arc<dyn Object>>,
-    background: Color,
-    seed: u64,
-) {
+pub struct RenderConfig<'a> {
+    pub camera: &'a Camera,
+    pub objects: Vec<Arc<dyn Object>>,
+    pub background: Color,
+    pub rays_per_pixel: u32,
+    pub seed: u64,
+    pub num_workers: usize,
+}
+
+pub fn render(config: RenderConfig<'_>, image: &mut Image) {
     let start_time = SystemTime::now();
 
     let image_width = image.width();
     let image_height = image.height();
 
-    let bvh = Bvh::new(objects);
-
-    let cpus = num_cpus::get();
+    let bvh = Bvh::new(config.objects);
 
     let next_pixel = AtomicU32::new(0);
     let output: Vec<SyncUnsafeCell<Color>> =
@@ -73,16 +73,16 @@ pub fn render(
             .collect();
 
     thread::scope(|scope| {
-        for _ in 0..cpus {
+        for _ in 0..config.num_workers {
             scope.spawn(|| unsafe {
                 compute_pixels(
                     image_width,
                     image_height,
-                    rays_per_pixel,
-                    camera,
+                    config.rays_per_pixel,
+                    config.camera,
                     &bvh,
-                    background,
-                    seed,
+                    config.background,
+                    config.seed,
                     &next_pixel,
                     &output,
                 );

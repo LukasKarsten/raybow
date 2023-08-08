@@ -19,6 +19,7 @@ use geometry::{Object, Sphere};
 use image::Image;
 use material::{DiffuseLight, Lambertian, Material, Metal};
 use rapid_qoi::{Colors, Qoi};
+use raybow::RenderConfig;
 use scene::Scene;
 use vector::Vector;
 
@@ -88,6 +89,10 @@ struct Options {
     #[argh(option, default = "0")]
     seed: u64,
 
+    /// number of workers to use (default is number of available CPUs)
+    #[argh(option, short = 'p', default = "num_cpus::get()")]
+    num_workers: usize,
+
     /// path to which the output should be written
     #[argh(option, short = 'o')]
     output: Option<PathBuf>,
@@ -110,16 +115,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let mut image = Image::new(options.width, options.height);
-
-    raybow::render(
-        &mut image,
-        options.rays_per_pixel,
-        &camera,
+    let config = RenderConfig {
+        camera: &camera,
         objects,
         background,
-        options.seed,
-    );
+        rays_per_pixel: options.rays_per_pixel,
+        seed: options.seed,
+        num_workers: options.num_workers,
+    };
+
+    let mut image = Image::new(options.width, options.height);
+
+    raybow::render(config, &mut image);
 
     let output_path = options.output.unwrap_or_else(|| {
         PathBuf::new()
