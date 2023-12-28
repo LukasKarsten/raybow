@@ -1,10 +1,6 @@
 use std::f32::consts::TAU;
 
-use crate::{
-    ray::Ray,
-    raybow::{RayState, RngKey},
-    vector::Vector,
-};
+use crate::{ray::Ray, raybow::WorkerState, vector::Vector};
 
 pub struct Camera {
     origin: Vector,
@@ -57,7 +53,7 @@ impl Camera {
         }
     }
 
-    pub fn get_ray(&self, s: f32, t: f32, state: &RayState) -> Ray {
+    pub fn get_ray(&self, s: f32, t: f32, state: &mut WorkerState) -> Ray {
         let rd = self.lens_radius * random_lens_position(state);
         let offset = self.u * rd.x() + self.v * rd.y();
 
@@ -68,8 +64,8 @@ impl Camera {
     }
 }
 
-fn random_lens_position(state: &RayState) -> Vector {
-    let [angle, len, ..] = state.gen_random_floats(RngKey::CameraLensPosition);
+fn random_lens_position(state: &mut WorkerState) -> Vector {
+    let [angle, len, ..] = state.gen_random_floats();
 
     let theta = angle * TAU;
 

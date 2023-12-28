@@ -1,6 +1,7 @@
 use std::{
     cell::SyncUnsafeCell,
     io::Write,
+    iter,
     sync::{
         atomic::{AtomicU32, Ordering},
         Arc,
@@ -21,68 +22,80 @@ use crate::{
     ray::Ray,
 };
 
-#[repr(u32)]
-pub enum RngKey {
-    RayPixelOffset,
-    CameraLensPosition,
-    ScatterDirection,
-    MetalFuzzDirection,
-    RefractThreshold,
-}
-
-pub struct RayState {
+pub struct WorkerState {
     philox: Philox4x32_10,
-    pixel_x: u32,
-    pixel_y: u32,
+    // The current pixel number
+    pixel_number: u32,
+    // The sample number of the current pixel
+    sample_number: u32,
+    // The ray number of the current sample
     ray_number: u32,
+    rng_cnt: u32,
     arena: Bump,
 }
 
-impl RayState {
+impl WorkerState {
+    fn new(seed: u64) -> Self {
+        Self {
+            philox: Philox4x32_10([(seed >> 32) as u32, seed as u32]),
+            pixel_number: 0,
+            sample_number: 0,
+            ray_number: 0,
+            rng_cnt: 0,
+            arena: Bump::new(),
+        }
+    }
+
     fn arena(&mut self) -> &mut Bump {
         &mut self.arena
     }
 
-    pub fn gen_random_floats(&self, rng_key: RngKey) -> [f32; 4] {
-        let ctr = [self.pixel_x, self.pixel_y, self.ray_number, rng_key as u32];
+    pub fn gen_random_floats(&mut self) -> [f32; 4] {
+        let ctr = [
+            self.pixel_number,
+            self.sample_number,
+            self.ray_number,
+            self.rng_cnt,
+        ];
+        self.rng_cnt += 1;
         self.philox.gen_f32s(ctr)
     }
 }
 
-pub struct RenderConfig<'a> {
+pub struct RenderJob<'a> {
     pub camera: &'a Camera,
     pub objects: Vec<Arc<dyn Object>>,
     pub background: Color,
-    pub rays_per_pixel: u32,
+    pub num_samples: u32,
     pub seed: u64,
     pub num_workers: usize,
 }
 
-pub fn render(config: RenderConfig<'_>, image: &mut Image) {
+pub fn render(job: RenderJob<'_>, image: &mut Image) {
     let start_time = SystemTime::now();
 
     let image_width = image.width();
     let image_height = image.height();
 
-    let bvh = Bvh::new(config.objects);
+    let bvh = Bvh::new(job.objects);
 
     let next_pixel = AtomicU32::new(0);
-    let output: Vec<SyncUnsafeCell<Color>> =
-        std::iter::repeat_with(|| SyncUnsafeCell::new(Color::BLACK))
-            .take(image_width as usize * image_height as usize)
-            .collect();
+    let num_pixels = image_width as usize * image_height as usize;
+    let output: Vec<_> = iter::repeat_with(|| SyncUnsafeCell::new(Color::BLACK))
+        .take(num_pixels)
+        .collect();
 
     thread::scope(|scope| {
-        for _ in 0..config.num_workers {
+        for _ in 0..job.num_workers {
             scope.spawn(|| unsafe {
                 compute_pixels(
                     image_width,
                     image_height,
-                    config.rays_per_pixel,
-                    config.camera,
+                    job.num_samples,
+                    job.camera,
                     &bvh,
-                    config.background,
-                    config.seed,
+                    job.background,
+                    job.seed,
                     &next_pixel,
                     &output,
                 );
@@ -90,10 +103,8 @@ pub fn render(config: RenderConfig<'_>, image: &mut Image) {
         }
     });
 
-    println!(
-        "\x1B[G\x1B[KDone in {:.3?}",
-        start_time.elapsed().unwrap_or(Duration::from_secs(0))
-    );
+    let duration = start_time.elapsed().unwrap_or(Duration::from_secs(0));
+    println!("\x1B[G\x1B[KDone in {duration:.3?}",);
 
     unsafe {
         let output: Vec<Color> = std::mem::transmute(output);
@@ -105,7 +116,7 @@ pub fn render(config: RenderConfig<'_>, image: &mut Image) {
 unsafe fn compute_pixels(
     image_width: u32,
     image_height: u32,
-    rays_per_pixel: u32,
+    num_samples: u32,
     camera: &Camera,
     bvh: &Bvh<Vec<Arc<dyn Object>>>,
     background: Color,
@@ -113,13 +124,7 @@ unsafe fn compute_pixels(
     next_pixel: &AtomicU32,
     output: &[SyncUnsafeCell<Color>],
 ) {
-    let mut state = RayState {
-        philox: Philox4x32_10([(seed >> 32) as u32, seed as u32]),
-        pixel_x: 0,
-        pixel_y: 0,
-        ray_number: 0,
-        arena: Bump::new(),
-    };
+    let mut state = WorkerState::new(seed);
 
     loop {
         let pixel_number = next_pixel.fetch_add(1, Ordering::Relaxed);
@@ -132,36 +137,30 @@ unsafe fn compute_pixels(
 
         if x == 0 {
             let mut stdout = std::io::stdout().lock();
-            write!(
-                stdout,
-                "\x1B[G\x1B[K{}/{} ({:.0}%)",
-                y,
-                image_height,
-                y as f32 / image_height as f32 * 100.0
-            )
-            .unwrap();
+            let progress = y as f32 / image_height as f32 * 100.0;
+            write!(stdout, "\x1B[G\x1B[K{y}/{image_height} ({progress:.0}%)",).unwrap();
             stdout.flush().unwrap();
         }
 
         let mut color = Color::BLACK;
 
-        state.pixel_x = x;
-        state.pixel_y = y;
-        for i in 0..rays_per_pixel {
-            state.ray_number = i;
+        state.pixel_number = pixel_number;
+        for i in 0..num_samples {
+            state.sample_number = i;
+            state.ray_number = 0;
 
-            let [x_off, y_off, ..] = state.gen_random_floats(RngKey::RayPixelOffset);
+            let [x_off, y_off, ..] = state.gen_random_floats();
 
             let u = (x as f32 + x_off) / image_width as f32;
             let v = (y as f32 + y_off) / image_height as f32;
-            let ray = camera.get_ray(1.0 - u, 1.0 - v, &state);
+            let ray = camera.get_ray(1.0 - u, 1.0 - v, &mut state);
 
             color += ray_color(ray, bvh, 50, &mut state, background);
 
             state.arena().reset();
         }
 
-        color /= rays_per_pixel as f32;
+        color /= num_samples as f32;
 
         unsafe {
             *output[pixel_number as usize].get() = color;
@@ -173,7 +172,7 @@ fn ray_color(
     mut ray: Ray,
     bvh: &Bvh<Vec<Arc<dyn Object>>>,
     max_bounces: u32,
-    state: &mut RayState,
+    state: &mut WorkerState,
     background: Color,
 ) -> Color {
     let mut emitting = Color::BLACK;
@@ -181,6 +180,7 @@ fn ray_color(
 
     for _ in 0..max_bounces {
         state.arena().reset();
+        state.ray_number += 1;
         match bvh.hit(ray, 0.0001..f32::INFINITY, state.arena()) {
             Some(hit) => {
                 let material_hit = hit.material.hit(&hit, state);

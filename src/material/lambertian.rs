@@ -1,9 +1,4 @@
-use crate::{
-    color::Color,
-    geometry::Hit,
-    ray::Ray,
-    raybow::{RayState, RngKey},
-};
+use crate::{color::Color, geometry::Hit, ray::Ray, raybow::WorkerState};
 
 use super::{random_unit_vector, Material, MaterialHitResult};
 
@@ -12,8 +7,8 @@ pub struct Lambertian {
 }
 
 impl Material for Lambertian {
-    fn hit(&self, hit: &Hit, state: &RayState) -> MaterialHitResult {
-        let mut scatter_dir = hit.normal + random_unit_vector(state, RngKey::ScatterDirection);
+    fn hit(&self, hit: &Hit, state: &mut WorkerState) -> MaterialHitResult {
+        let mut scatter_dir = hit.normal + random_unit_vector(state);
 
         if scatter_dir.is_almost_zero() {
             scatter_dir = hit.normal;

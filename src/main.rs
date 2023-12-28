@@ -11,15 +11,11 @@ use std::{
 use argh::FromArgs;
 use camera::Camera;
 use color::Color;
-use exr::image::{
-    write::{channels::GetPixel, WritableImage},
-    Image as ExrImage, SpecificChannels,
-};
 use geometry::{Object, Sphere};
 use image::Image;
 use material::{DiffuseLight, Lambertian, Material, Metal};
 use rapid_qoi::{Colors, Qoi};
-use raybow::RenderConfig;
+use raybow::RenderJob;
 use scene::Scene;
 use vector::Vector;
 
@@ -81,9 +77,9 @@ struct Options {
     #[argh(positional)]
     height: u32,
 
-    /// number of rays that make up a single pixel
-    #[argh(option, short = 'r', default = "500")]
-    rays_per_pixel: u32,
+    /// number of samples that make up a single pixel
+    #[argh(option, short = 's', default = "500")]
+    num_samples: u32,
 
     /// the seed
     #[argh(option, default = "0")]
@@ -115,18 +111,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let config = RenderConfig {
+    let job = RenderJob {
         camera: &camera,
         objects,
         background,
-        rays_per_pixel: options.rays_per_pixel,
+        num_samples: options.num_samples,
         seed: options.seed,
         num_workers: options.num_workers,
     };
 
     let mut image = Image::new(options.width, options.height);
 
-    raybow::render(config, &mut image);
+    raybow::render(job, &mut image);
 
     let output_path = options.output.unwrap_or_else(|| {
         PathBuf::new()
@@ -143,9 +139,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-struct ImageGetPixelNewType<'a>(&'a Image);
+struct ImageGetPixelWrapper<'a>(&'a Image);
 
-impl<'a> GetPixel for ImageGetPixelNewType<'a> {
+impl<'a> exr::image::write::channels::GetPixel for ImageGetPixelWrapper<'a> {
     type Pixel = (f32, f32, f32);
 
     fn get_pixel(&self, position: exr::prelude::Vec2<usize>) -> Self::Pixel {
@@ -157,7 +153,9 @@ impl<'a> GetPixel for ImageGetPixelNewType<'a> {
 }
 
 fn write_exr(image: Image, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let pixels = SpecificChannels::rgb(ImageGetPixelNewType(&image));
+    use exr::image::{write::WritableImage, Image as ExrImage, SpecificChannels};
+
+    let pixels = SpecificChannels::rgb(ImageGetPixelWrapper(&image));
 
     let exr_image =
         ExrImage::from_channels((image.width() as usize, image.height() as usize), pixels);

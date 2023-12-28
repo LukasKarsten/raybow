@@ -1,9 +1,4 @@
-use crate::{
-    color::Color,
-    geometry::Hit,
-    ray::Ray,
-    raybow::{RayState, RngKey},
-};
+use crate::{color::Color, geometry::Hit, ray::Ray, raybow::WorkerState};
 
 use super::{reflect, refract, Material, MaterialHitResult};
 
@@ -12,7 +7,7 @@ pub struct Dialectric {
 }
 
 impl Material for Dialectric {
-    fn hit(&self, hit: &Hit, state: &RayState) -> MaterialHitResult {
+    fn hit(&self, hit: &Hit, state: &mut WorkerState) -> MaterialHitResult {
         let attenuation = Color::WHITE;
         let refraction_ratio = if hit.front_face {
             1.0 / self.index
@@ -25,7 +20,7 @@ impl Material for Dialectric {
         let cos_theta = (-unit_vel).dot(hit.normal).min(1.0);
         let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
 
-        let [reflect_threshold, ..] = state.gen_random_floats(RngKey::RefractThreshold);
+        let [reflect_threshold, ..] = state.gen_random_floats();
 
         let cannot_refract = refraction_ratio * sin_theta > 1.0
             || reflectance(cos_theta, refraction_ratio) > reflect_threshold;

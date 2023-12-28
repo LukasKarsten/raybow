@@ -1,12 +1,6 @@
 use std::f32::consts::TAU;
 
-use crate::{
-    color::Color,
-    geometry::Hit,
-    ray::Ray,
-    raybow::{RayState, RngKey},
-    vector::Vector,
-};
+use crate::{color::Color, geometry::Hit, ray::Ray, raybow::WorkerState, vector::Vector};
 
 pub use dialectric::Dialectric;
 pub use diffuse_light::DiffuseLight;
@@ -19,7 +13,7 @@ mod lambertian;
 mod metal;
 
 pub trait Material: Send + Sync {
-    fn hit(&self, hit: &Hit, state: &RayState) -> MaterialHitResult;
+    fn hit(&self, hit: &Hit, state: &mut WorkerState) -> MaterialHitResult;
 }
 
 pub struct Reflection {
@@ -59,13 +53,13 @@ fn unit_vector_from_cylinder(angle: f32, z: f32) -> Vector {
     Vector::from_xyz(x, y, z)
 }
 
-fn random_unit_vector(state: &RayState, rng_key: RngKey) -> Vector {
-    let [angle, z, ..] = state.gen_random_floats(rng_key);
+fn random_unit_vector(state: &mut WorkerState) -> Vector {
+    let [angle, z, ..] = state.gen_random_floats();
     unit_vector_from_cylinder(angle, -1.0 + z * 2.0)
 }
 
-fn random_in_unit_sphere(state: &RayState, rng_key: RngKey) -> Vector {
-    let [angle, z, len, ..] = state.gen_random_floats(rng_key);
+fn random_in_unit_sphere(state: &mut WorkerState) -> Vector {
+    let [angle, z, len, ..] = state.gen_random_floats();
     unit_vector_from_cylinder(angle, -1.0 + z * 2.0) * len
 }
 
