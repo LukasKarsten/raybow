@@ -56,9 +56,9 @@ impl ObjectList for TriangleMesh {
         let sx = -ray_dir[kx] * sz;
         let sy = -ray_dir[ky] * sz;
 
-        let points = self.fetch_vertices(index);
+        let [p1, p2, p3] = self.fetch_vertices(index);
 
-        let [p1t, p2t, p3t] = points
+        let [p1t, p2t, p3t] = [p1, p2, p3]
             .map(|p| p - ray.origin)
             .map(|p| Vector::from_xyz(p[kx], p[ky], p[kz]))
             .map(|p| Vector::from_xyz(p.x() + sx * p.z(), p.y() + sy * p.z(), p.z() * sz));
@@ -94,7 +94,7 @@ impl ObjectList for TriangleMesh {
         let b2 = e2 * inv_det;
         let b3 = e3 * inv_det;
 
-        let point = b1 * p1t + b2 * p2t + b3 * p3t;
+        let point = b1 * p1 + b2 * p2 + b3 * p3;
 
         let t = t_scaled / det;
 
@@ -102,7 +102,7 @@ impl ObjectList for TriangleMesh {
             return None;
         }
 
-        let normal = (p2t - p1t).cross3(p3t - p1t).normalize_unchecked();
+        let normal = (p2 - p1).cross3(p3 - p1).normalize_unchecked();
         Some(Hit::new(point, normal, ray, t, self.material.as_ref()))
     }
 
