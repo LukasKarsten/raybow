@@ -81,7 +81,7 @@ impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
             .as_ptr()
             .cast::<Node>();
         unsafe {
-            pending_nodes.offset(0).write(self.root);
+            pending_nodes.add(0).write(self.root);
         }
         let mut pending_nodes_len = 1;
 
