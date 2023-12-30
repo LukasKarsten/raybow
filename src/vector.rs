@@ -1,7 +1,5 @@
 use std::{
-    arch::x86_64::*,
     fmt::{self, Write},
-    mem::MaybeUninit,
     ops::{Add, Deref, DerefMut, Div, Index, Mul, Neg, Sub},
 };
 
@@ -56,15 +54,6 @@ impl Vector {
         self / self.length()
     }
 
-    #[cfg(feature = "simd")]
-    pub fn dot(self, other: Self) -> f32 {
-        unsafe {
-            let dp = _mm_dp_ps::<0xF1>(self.to_simd(), other.to_simd());
-            f32::from_bits(_mm_extract_ps::<0>(dp) as u32)
-        }
-    }
-
-    #[cfg(not(feature = "simd"))]
     pub fn dot(self, other: Self) -> f32 {
         self.x() * other.x() + self.y() * other.y() + self.z() * other.z() + self.w() * other.w()
     }
@@ -77,32 +66,10 @@ impl Vector {
         Self::from_xyzw(x, y, z, self.w())
     }
 
-    #[cfg(feature = "simd")]
-    pub fn is_almost_zero(self) -> bool {
-        unsafe {
-            let this = self.to_simd();
-
-            let epsilon = _mm_set1_ps(1e-8);
-            let mask = _mm_set1_ps(-0.0);
-
-            let abs = _mm_andnot_ps(mask, this);
-            let result = _mm_movemask_ps(_mm_cmp_ps::<_CMP_LT_OQ>(abs, epsilon));
-
-            result == 0b1111
-        }
-    }
-
-    #[cfg(not(feature = "simd"))]
     pub fn is_almost_zero(self) -> bool {
         self.0.into_iter().all(|v| v.abs() < 1e-8)
     }
 
-    #[cfg(feature = "simd")]
-    pub fn min(self, other: Self) -> Self {
-        unsafe { Self::from_simd(_mm_min_ps(self.to_simd(), other.to_simd())) }
-    }
-
-    #[cfg(not(feature = "simd"))]
     pub fn min(self, other: Self) -> Self {
         let x = self.x().min(other.x());
         let y = self.y().min(other.y());
@@ -111,12 +78,6 @@ impl Vector {
         Self::from_xyzw(x, y, z, w)
     }
 
-    #[cfg(feature = "simd")]
-    pub fn max(self, other: Self) -> Self {
-        unsafe { Self::from_simd(_mm_max_ps(self.to_simd(), other.to_simd())) }
-    }
-
-    #[cfg(not(feature = "simd"))]
     pub fn max(self, other: Self) -> Self {
         let x = self.x().max(other.x());
         let y = self.y().max(other.y());
@@ -125,12 +86,6 @@ impl Vector {
         Self::from_xyzw(x, y, z, w)
     }
 
-    #[cfg(feature = "simd")]
-    pub fn abs(self) -> Self {
-        unsafe { Self::from_simd(_mm_andnot_ps(_mm_set1_ps(-0.0), self.to_simd())) }
-    }
-
-    #[cfg(not(feature = "simd"))]
     pub fn abs(self) -> Self {
         Self(self.0.map(|v| v.abs()))
     }
@@ -145,18 +100,6 @@ impl Vector {
             Dimension::Z
         }
     }
-
-    pub fn to_simd(&self) -> __m128 {
-        unsafe { _mm_load_ps(&self.0 as _) }
-    }
-
-    pub fn from_simd(vec: __m128) -> Self {
-        unsafe {
-            let mut data = MaybeUninit::uninit();
-            _mm_store_ps(data.as_mut_ptr() as _, vec);
-            data.assume_init()
-        }
-    }
 }
 
 impl From<Vector> for [f32; 3] {
@@ -166,11 +109,21 @@ impl From<Vector> for [f32; 3] {
     }
 }
 
+impl From<[f32; 3]> for Vector {
+    fn from([x, y, z]: [f32; 3]) -> Self {
+        Self::from_xyz(x, y, z)
+    }
+}
+
 impl Add<Vector> for Vector {
     type Output = Self;
 
     fn add(self, rhs: Vector) -> Self::Output {
-        unsafe { Self::from_simd(_mm_add_ps(self.to_simd(), rhs.to_simd())) }
+        let x = self.x() + rhs.x();
+        let y = self.y() + rhs.y();
+        let z = self.z() + rhs.z();
+        let w = self.w() + rhs.w();
+        Self::from_xyzw(x, y, z, w)
     }
 }
 
@@ -178,7 +131,11 @@ impl Sub<Vector> for Vector {
     type Output = Self;
 
     fn sub(self, rhs: Vector) -> Self::Output {
-        unsafe { Self::from_simd(_mm_sub_ps(self.to_simd(), rhs.to_simd())) }
+        let x = self.x() - rhs.x();
+        let y = self.y() - rhs.y();
+        let z = self.z() - rhs.z();
+        let w = self.w() - rhs.w();
+        Self::from_xyzw(x, y, z, w)
     }
 }
 
@@ -186,7 +143,11 @@ impl Mul<f32> for Vector {
     type Output = Self;
 
     fn mul(self, rhs: f32) -> Self::Output {
-        unsafe { Self::from_simd(_mm_mul_ps(self.to_simd(), _mm_set1_ps(rhs))) }
+        let x = self.x() * rhs;
+        let y = self.y() * rhs;
+        let z = self.z() * rhs;
+        let w = self.w() * rhs;
+        Self::from_xyzw(x, y, z, w)
     }
 }
 
@@ -202,7 +163,11 @@ impl Mul<Vector> for Vector {
     type Output = Self;
 
     fn mul(self, rhs: Vector) -> Self::Output {
-        unsafe { Self::from_simd(_mm_mul_ps(self.to_simd(), rhs.to_simd())) }
+        let x = self.x() * rhs.x();
+        let y = self.y() * rhs.y();
+        let z = self.z() * rhs.z();
+        let w = self.w() * rhs.w();
+        Self::from_xyzw(x, y, z, w)
     }
 }
 
@@ -210,7 +175,11 @@ impl Div<Vector> for f32 {
     type Output = Vector;
 
     fn div(self, rhs: Vector) -> Self::Output {
-        unsafe { Vector::from_simd(_mm_div_ps(_mm_set1_ps(self), rhs.to_simd())) }
+        let x = self / rhs.x();
+        let y = self / rhs.y();
+        let z = self / rhs.z();
+        let w = self / rhs.w();
+        Vector::from_xyzw(x, y, z, w)
     }
 }
 
@@ -218,7 +187,11 @@ impl Div<f32> for Vector {
     type Output = Self;
 
     fn div(self, rhs: f32) -> Self::Output {
-        unsafe { Self::from_simd(_mm_div_ps(self.to_simd(), _mm_set1_ps(rhs))) }
+        let x = self.x() / rhs;
+        let y = self.y() / rhs;
+        let z = self.z() / rhs;
+        let w = self.w() / rhs;
+        Self::from_xyzw(x, y, z, w)
     }
 }
 
@@ -226,11 +199,11 @@ impl Neg for Vector {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        unsafe {
-            let this = self.to_simd();
-            let negated = _mm_xor_ps(this, _mm_set1_ps(-0.0));
-            Self::from_simd(negated)
-        }
+        let x = -self.x();
+        let y = -self.y();
+        let z = -self.z();
+        let w = -self.w();
+        Self::from_xyzw(x, y, z, w)
     }
 }
 
@@ -286,6 +259,11 @@ impl Vector3x8 {
         self.x[idx] = vec[0];
         self.y[idx] = vec[1];
         self.z[idx] = vec[2];
+    }
+
+    pub fn get_vec(&self, idx: usize) -> [f32; 3] {
+        assert!(idx < 8);
+        [self.x[idx], self.y[idx], self.z[idx]]
     }
 
     pub fn x(&self) -> &[f32; 8] {
