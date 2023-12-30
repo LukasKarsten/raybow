@@ -50,6 +50,13 @@ impl WorkerState {
         &mut self.arena
     }
 
+    pub fn init_trace(&mut self, pixel_number: u32, sample_number: u32) {
+        self.pixel_number = pixel_number;
+        self.sample_number = sample_number;
+        self.ray_number = 0;
+        self.rng_cnt = 0;
+    }
+
     pub fn gen_random_floats(&mut self) -> [f32; 4] {
         let ctr = [
             self.pixel_number,
@@ -144,10 +151,8 @@ unsafe fn compute_pixels(
 
         let mut color = Color::BLACK;
 
-        state.pixel_number = pixel_number;
         for i in 0..num_samples {
-            state.sample_number = i;
-            state.ray_number = 0;
+            state.init_trace(pixel_number, i);
 
             let [x_off, y_off, ..] = state.gen_random_floats();
 
