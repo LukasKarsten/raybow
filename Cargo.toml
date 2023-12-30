@@ -3,10 +3,6 @@ name = "raybow"
 version = "0.2.0"
 edition = "2021"
 
-[features]
-default = ["simd"]
-simd = []
-
 [dependencies]
 argh = "0.1.10"
 rapid-qoi = "0.6.1"
