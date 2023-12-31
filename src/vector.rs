@@ -224,35 +224,35 @@ impl Index<Dimension> for Vector {
 }
 
 #[derive(Default, Clone, Copy, PartialEq)]
-#[repr(C, align(32))]
-struct F32x8([f32; 8]);
+#[repr(C, align(64))]
+struct F32x16([f32; 16]);
 
-impl Deref for F32x8 {
-    type Target = [f32; 8];
+impl Deref for F32x16 {
+    type Target = [f32; 16];
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl DerefMut for F32x8 {
+impl DerefMut for F32x16 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
 #[derive(Default, Clone, Copy, PartialEq)]
-pub struct Vector3x8 {
-    x: F32x8,
-    y: F32x8,
-    z: F32x8,
+pub struct Vector3x16 {
+    x: F32x16,
+    y: F32x16,
+    z: F32x16,
 }
 
-impl Vector3x8 {
+impl Vector3x16 {
     pub const ZERO: Self = Self {
-        x: F32x8([0.0; 8]),
-        y: F32x8([0.0; 8]),
-        z: F32x8([0.0; 8]),
+        x: F32x16([0.0; 16]),
+        y: F32x16([0.0; 16]),
+        z: F32x16([0.0; 16]),
     };
 
     pub fn set_vec(&mut self, idx: usize, vec: [f32; 3]) {
@@ -262,24 +262,24 @@ impl Vector3x8 {
     }
 
     pub fn get_vec(&self, idx: usize) -> [f32; 3] {
-        assert!(idx < 8);
+        assert!(idx < 16);
         [self.x[idx], self.y[idx], self.z[idx]]
     }
 
-    pub fn x(&self) -> &[f32; 8] {
+    pub fn x(&self) -> &[f32; 16] {
         &self.x
     }
 
-    pub fn y(&self) -> &[f32; 8] {
+    pub fn y(&self) -> &[f32; 16] {
         &self.y
     }
 
-    pub fn z(&self) -> &[f32; 8] {
+    pub fn z(&self) -> &[f32; 16] {
         &self.z
     }
 }
 
-impl fmt::Debug for Vector3x8 {
+impl fmt::Debug for Vector3x16 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Vector3x8(")?;
 

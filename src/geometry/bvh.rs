@@ -1,10 +1,10 @@
-use std::{alloc::Layout, arch::x86_64::*, ops::Range};
+use std::{alloc::Layout, cell::SyncUnsafeCell, ops::Range};
 
 use bumpalo::Bump;
 
 use crate::{
     ray::Ray,
-    vector::{Dimension, Vector, Vector3x8},
+    vector::{Dimension, Vector, Vector3x16},
 };
 
 use super::{aabb::Aabb, Hit, Object, ObjectList};
@@ -17,9 +17,9 @@ enum Node {
 
 #[repr(align(64))]
 struct Branch {
-    aabb_min: Vector3x8,
-    aabb_max: Vector3x8,
-    children: [Node; 8],
+    aabb_min: Vector3x16,
+    aabb_max: Vector3x16,
+    children: [Node; 16],
 }
 
 pub struct Bvh<L> {
@@ -73,6 +73,26 @@ impl<L: ObjectList<Object = O>, O> Bvh<L> {
     }
 }
 
+type IntersectionsTest = unsafe fn(Ray, Vector3x16, Vector3x16, Range<f32>) -> u16;
+
+static INTERSECTIONS_TEST: SyncUnsafeCell<IntersectionsTest> =
+    SyncUnsafeCell::new(intersections_generic);
+
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn static_config() {
+    let hw = crate::raybow::HardwareConfig::get();
+    if hw.cpu_feature_avx512f {
+        *INTERSECTIONS_TEST.get() = intersections_x86_avx512f;
+    } else if hw.cpu_feature_avx {
+        *INTERSECTIONS_TEST.get() = intersections_x86_avx;
+    } else if hw.cpu_feature_sse {
+        *INTERSECTIONS_TEST.get() = intersections_x86_sse;
+    }
+}
+
+#[cfg(not(any(target_arch = "x86_64")))]
+pub unsafe fn static_config() {}
+
 impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
     fn hit(&self, ray: Ray, mut t_range: Range<f32>, arena: &Bump) -> Option<Hit> {
         let pending_nodes_cap = self.max_depth * 7 + 1;
@@ -86,6 +106,8 @@ impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
         let mut pending_nodes_len = 1;
 
         let mut nearest_hit = None;
+
+        let intersections_test = unsafe { *INTERSECTIONS_TEST.get() };
 
         loop {
             if pending_nodes_len == 0 {
@@ -111,15 +133,16 @@ impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
                 Node::Branch { idx, .. } => {
                     let branch = &self.branches[idx as usize];
 
-                    let mut mask =
-                        intersections(ray, branch.aabb_min, branch.aabb_max, t_range.clone());
+                    let mut intersections = unsafe {
+                        intersections_test(ray, branch.aabb_min, branch.aabb_max, t_range.clone())
+                    };
 
                     loop {
-                        let idx = mask.trailing_zeros();
-                        if idx == u8::BITS {
+                        let idx = intersections.trailing_zeros();
+                        if idx == u16::BITS {
                             break;
                         }
-                        mask &= !(1 << idx);
+                        intersections ^= 1 << idx;
                         let child = branch.children[idx as usize];
                         unsafe {
                             pending_nodes.add(pending_nodes_len).write(child);
@@ -138,33 +161,21 @@ impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
     }
 }
 
-fn intersections(ray: Ray, aabb_min: Vector3x8, aabb_max: Vector3x8, t_range: Range<f32>) -> u8 {
-    #[cfg(target_arch = "x86_64")]
-    if std::arch::is_x86_feature_detected!("avx") {
-        return unsafe { intersections_x86_avx(ray, aabb_min, aabb_max, t_range) };
-    }
-    #[cfg(target_arch = "x86_64")]
-    if std::arch::is_x86_feature_detected!("sse") {
-        return unsafe { intersections_x86_sse(ray, aabb_min, aabb_max, t_range) };
-    }
-    intersections_generic(ray, aabb_min, aabb_max, t_range)
-}
-
 fn gamma(n: i32) -> f32 {
     (n as f32 * f32::EPSILON) / (1.0 - n as f32 * f32::EPSILON)
 }
 
 fn intersections_generic(
     ray: Ray,
-    aabb_min: Vector3x8,
-    aabb_max: Vector3x8,
+    aabb_min: Vector3x16,
+    aabb_max: Vector3x16,
     t_range: Range<f32>,
-) -> u8 {
+) -> u16 {
     let mut intersections = 0;
 
     let vel_rcp = 1.0 / ray.direction;
 
-    for i in 0..8 {
+    for i in 0..16 {
         let aabb_min = Vector::from(aabb_min.get_vec(i));
         let aabb_max = Vector::from(aabb_max.get_vec(i));
 
@@ -191,13 +202,16 @@ fn intersections_generic(
     intersections
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "sse")]
 unsafe fn intersections_x86_sse(
     ray: Ray,
-    aabb_min: Vector3x8,
-    aabb_max: Vector3x8,
+    aabb_min: Vector3x16,
+    aabb_max: Vector3x16,
     t_range: Range<f32>,
-) -> u8 {
+) -> u16 {
+    use std::arch::x86_64::*;
+
     let vel_rcp = 1.0 / ray.direction;
     let vel_rcp_x = _mm_set1_ps(vel_rcp.x());
     let vel_rcp_y = _mm_set1_ps(vel_rcp.y());
@@ -212,7 +226,7 @@ unsafe fn intersections_x86_sse(
 
     let mut intersections = 0;
 
-    for off in (0..8).step_by(4) {
+    for off in (0..16).step_by(4) {
         let aabb_min_x = _mm_load_ps(aabb_min.x().as_ptr().add(off));
         let aabb_min_y = _mm_load_ps(aabb_min.y().as_ptr().add(off));
         let aabb_min_z = _mm_load_ps(aabb_min.z().as_ptr().add(off));
@@ -242,19 +256,22 @@ unsafe fn intersections_x86_sse(
         tmax = _mm_mul_ps(tmax, _mm_set1_ps(1.0 + 2.0 * gamma(3)));
         let mask = _mm_cmp_ps(tmin, tmax, _CMP_LE_OQ);
 
-        intersections |= (_mm_movemask_ps(mask) as u8) << off;
+        intersections |= (_mm_movemask_ps(mask) as u16) << off;
     }
 
     intersections
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
 unsafe fn intersections_x86_avx(
     ray: Ray,
-    aabb_min: Vector3x8,
-    aabb_max: Vector3x8,
+    aabb_min: Vector3x16,
+    aabb_max: Vector3x16,
     t_range: Range<f32>,
-) -> u8 {
+) -> u16 {
+    use std::arch::x86_64::*;
+
     let vel_rcp = 1.0 / ray.direction;
     let vel_rcp_x = _mm256_set1_ps(vel_rcp.x());
     let vel_rcp_y = _mm256_set1_ps(vel_rcp.y());
@@ -264,36 +281,97 @@ unsafe fn intersections_x86_avx(
     let origin_y = _mm256_set1_ps(ray.origin.y());
     let origin_z = _mm256_set1_ps(ray.origin.z());
 
-    let aabb_min_x = _mm256_load_ps(aabb_min.x().as_ptr());
-    let aabb_min_y = _mm256_load_ps(aabb_min.y().as_ptr());
-    let aabb_min_z = _mm256_load_ps(aabb_min.z().as_ptr());
+    let t_start = _mm256_set1_ps(t_range.start);
+    let t_end = _mm256_set1_ps(t_range.end);
 
-    let aabb_max_x = _mm256_load_ps(aabb_max.x().as_ptr());
-    let aabb_max_y = _mm256_load_ps(aabb_max.y().as_ptr());
-    let aabb_max_z = _mm256_load_ps(aabb_max.z().as_ptr());
+    let mut intersections = 0;
 
-    let t0_x = _mm256_mul_ps(_mm256_sub_ps(aabb_min_x, origin_x), vel_rcp_x);
-    let t0_y = _mm256_mul_ps(_mm256_sub_ps(aabb_min_y, origin_y), vel_rcp_y);
-    let t0_z = _mm256_mul_ps(_mm256_sub_ps(aabb_min_z, origin_z), vel_rcp_z);
+    for off in (0..16).step_by(8) {
+        let aabb_min_x = _mm256_load_ps(aabb_min.x().as_ptr().add(off));
+        let aabb_min_y = _mm256_load_ps(aabb_min.y().as_ptr().add(off));
+        let aabb_min_z = _mm256_load_ps(aabb_min.z().as_ptr().add(off));
 
-    let t1_x = _mm256_mul_ps(_mm256_sub_ps(aabb_max_x, origin_x), vel_rcp_x);
-    let t1_y = _mm256_mul_ps(_mm256_sub_ps(aabb_max_y, origin_y), vel_rcp_y);
-    let t1_z = _mm256_mul_ps(_mm256_sub_ps(aabb_max_z, origin_z), vel_rcp_z);
+        let aabb_max_x = _mm256_load_ps(aabb_max.x().as_ptr().add(off));
+        let aabb_max_y = _mm256_load_ps(aabb_max.y().as_ptr().add(off));
+        let aabb_max_z = _mm256_load_ps(aabb_max.z().as_ptr().add(off));
 
-    let mut tmin = _mm256_set1_ps(t_range.start);
-    tmin = _mm256_min_ps(_mm256_max_ps(t0_x, tmin), _mm256_max_ps(t1_x, tmin));
-    tmin = _mm256_min_ps(_mm256_max_ps(t0_y, tmin), _mm256_max_ps(t1_y, tmin));
-    tmin = _mm256_min_ps(_mm256_max_ps(t0_z, tmin), _mm256_max_ps(t1_z, tmin));
+        let t0_x = _mm256_mul_ps(_mm256_sub_ps(aabb_min_x, origin_x), vel_rcp_x);
+        let t0_y = _mm256_mul_ps(_mm256_sub_ps(aabb_min_y, origin_y), vel_rcp_y);
+        let t0_z = _mm256_mul_ps(_mm256_sub_ps(aabb_min_z, origin_z), vel_rcp_z);
 
-    let mut tmax = _mm256_set1_ps(t_range.end);
-    tmax = _mm256_max_ps(_mm256_min_ps(t0_x, tmax), _mm256_min_ps(t1_x, tmax));
-    tmax = _mm256_max_ps(_mm256_min_ps(t0_y, tmax), _mm256_min_ps(t1_y, tmax));
-    tmax = _mm256_max_ps(_mm256_min_ps(t0_z, tmax), _mm256_min_ps(t1_z, tmax));
+        let t1_x = _mm256_mul_ps(_mm256_sub_ps(aabb_max_x, origin_x), vel_rcp_x);
+        let t1_y = _mm256_mul_ps(_mm256_sub_ps(aabb_max_y, origin_y), vel_rcp_y);
+        let t1_z = _mm256_mul_ps(_mm256_sub_ps(aabb_max_z, origin_z), vel_rcp_z);
 
-    tmax = _mm256_mul_ps(tmax, _mm256_set1_ps(1.0 + 2.0 * gamma(3)));
-    let mask = _mm256_cmp_ps(tmin, tmax, _CMP_LE_OQ);
+        let mut tmin = t_start;
+        tmin = _mm256_min_ps(_mm256_max_ps(t0_x, tmin), _mm256_max_ps(t1_x, tmin));
+        tmin = _mm256_min_ps(_mm256_max_ps(t0_y, tmin), _mm256_max_ps(t1_y, tmin));
+        tmin = _mm256_min_ps(_mm256_max_ps(t0_z, tmin), _mm256_max_ps(t1_z, tmin));
 
-    _mm256_movemask_ps(mask) as u8
+        let mut tmax = t_end;
+        tmax = _mm256_max_ps(_mm256_min_ps(t0_x, tmax), _mm256_min_ps(t1_x, tmax));
+        tmax = _mm256_max_ps(_mm256_min_ps(t0_y, tmax), _mm256_min_ps(t1_y, tmax));
+        tmax = _mm256_max_ps(_mm256_min_ps(t0_z, tmax), _mm256_min_ps(t1_z, tmax));
+
+        tmax = _mm256_mul_ps(tmax, _mm256_set1_ps(1.0 + 2.0 * gamma(3)));
+        let mask = _mm256_cmp_ps(tmin, tmax, _CMP_LE_OQ);
+
+        intersections |= (_mm256_movemask_ps(mask) as u16) << off;
+    }
+
+    intersections
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn intersections_x86_avx512f(
+    ray: Ray,
+    aabb_min: Vector3x16,
+    aabb_max: Vector3x16,
+    t_range: Range<f32>,
+) -> u16 {
+    use std::arch::x86_64::*;
+
+    let vel_rcp = 1.0 / ray.direction;
+    let vel_rcp_x = _mm512_set1_ps(vel_rcp.x());
+    let vel_rcp_y = _mm512_set1_ps(vel_rcp.y());
+    let vel_rcp_z = _mm512_set1_ps(vel_rcp.z());
+
+    let origin_x = _mm512_set1_ps(ray.origin.x());
+    let origin_y = _mm512_set1_ps(ray.origin.y());
+    let origin_z = _mm512_set1_ps(ray.origin.z());
+
+    let t_start = _mm512_set1_ps(t_range.start);
+    let t_end = _mm512_set1_ps(t_range.end);
+
+    let aabb_min_x = _mm512_load_ps(aabb_min.x().as_ptr());
+    let aabb_min_y = _mm512_load_ps(aabb_min.y().as_ptr());
+    let aabb_min_z = _mm512_load_ps(aabb_min.z().as_ptr());
+
+    let aabb_max_x = _mm512_load_ps(aabb_max.x().as_ptr());
+    let aabb_max_y = _mm512_load_ps(aabb_max.y().as_ptr());
+    let aabb_max_z = _mm512_load_ps(aabb_max.z().as_ptr());
+
+    let t0_x = _mm512_mul_ps(_mm512_sub_ps(aabb_min_x, origin_x), vel_rcp_x);
+    let t0_y = _mm512_mul_ps(_mm512_sub_ps(aabb_min_y, origin_y), vel_rcp_y);
+    let t0_z = _mm512_mul_ps(_mm512_sub_ps(aabb_min_z, origin_z), vel_rcp_z);
+
+    let t1_x = _mm512_mul_ps(_mm512_sub_ps(aabb_max_x, origin_x), vel_rcp_x);
+    let t1_y = _mm512_mul_ps(_mm512_sub_ps(aabb_max_y, origin_y), vel_rcp_y);
+    let t1_z = _mm512_mul_ps(_mm512_sub_ps(aabb_max_z, origin_z), vel_rcp_z);
+
+    let mut tmin = t_start;
+    tmin = _mm512_min_ps(_mm512_max_ps(t0_x, tmin), _mm512_max_ps(t1_x, tmin));
+    tmin = _mm512_min_ps(_mm512_max_ps(t0_y, tmin), _mm512_max_ps(t1_y, tmin));
+    tmin = _mm512_min_ps(_mm512_max_ps(t0_z, tmin), _mm512_max_ps(t1_z, tmin));
+
+    let mut tmax = t_end;
+    tmax = _mm512_max_ps(_mm512_min_ps(t0_x, tmax), _mm512_min_ps(t1_x, tmax));
+    tmax = _mm512_max_ps(_mm512_min_ps(t0_y, tmax), _mm512_min_ps(t1_y, tmax));
+    tmax = _mm512_max_ps(_mm512_min_ps(t0_z, tmax), _mm512_min_ps(t1_z, tmax));
+
+    tmax = _mm512_mul_ps(tmax, _mm512_set1_ps(1.0 + 2.0 * gamma(3)));
+    _mm512_cmp_ps_mask::<_CMP_LE_OQ>(tmin, tmax)
 }
 
 fn build(
@@ -327,16 +405,16 @@ fn build_branch(
     mut offset: usize,
     branches: &mut Vec<Branch>,
 ) -> (Node, Aabb, usize) {
-    let splits = split8(objects);
+    let splits = split16(objects);
 
     let own_idx = branches.len();
     branches.push(Branch {
-        aabb_min: Vector3x8::ZERO,
-        aabb_max: Vector3x8::ZERO,
+        aabb_min: Vector3x16::ZERO,
+        aabb_max: Vector3x16::ZERO,
         children: [Node::Leaf {
             offset: 0,
             length: 0,
-        }; 8],
+        }; 16],
     });
 
     let mut max_depth = 0;
@@ -367,18 +445,30 @@ fn build_branch(
     (child, aabb.unwrap(), max_depth + 1)
 }
 
-fn split8(objects: &mut [ObjectInfo]) -> [&mut [ObjectInfo]; 8] {
-    let (s1_4, s5_8) = split(objects);
+fn split16(objects: &mut [ObjectInfo]) -> [&mut [ObjectInfo]; 16] {
+    let (s1_8, s9_16) = split(objects);
+
+    let (s1_4, s5_8) = split(s1_8);
+    let (s9_12, s13_16) = split(s9_16);
 
     let (s1_2, s3_4) = split(s1_4);
     let (s5_6, s7_8) = split(s5_8);
+    let (s9_10, s11_12) = split(s9_12);
+    let (s13_14, s15_16) = split(s13_16);
 
     let (s1, s2) = split(s1_2);
     let (s3, s4) = split(s3_4);
     let (s5, s6) = split(s5_6);
     let (s7, s8) = split(s7_8);
 
-    [s1, s2, s3, s4, s5, s6, s7, s8]
+    let (s9, s10) = split(s9_10);
+    let (s11, s12) = split(s11_12);
+    let (s13, s14) = split(s13_14);
+    let (s15, s16) = split(s15_16);
+
+    [
+        s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16,
+    ]
 }
 
 fn split(objects: &mut [ObjectInfo]) -> (&mut [ObjectInfo], &mut [ObjectInfo]) {

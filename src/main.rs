@@ -1,4 +1,4 @@
-#![feature(sync_unsafe_cell)]
+#![feature(sync_unsafe_cell, avx512_target_feature, stdarch_x86_avx512)]
 
 use std::{
     fs::File,

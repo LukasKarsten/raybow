@@ -4,7 +4,7 @@ use std::{
     iter,
     sync::{
         atomic::{AtomicU32, Ordering},
-        Arc,
+        Arc, Once,
     },
     thread,
     time::{Duration, SystemTime},
@@ -15,12 +15,68 @@ use bumpalo::Bump;
 use crate::{
     camera::Camera,
     color::Color,
-    geometry::{bvh::Bvh, Object},
+    geometry::{
+        bvh::{self, Bvh},
+        Object,
+    },
     image::Image,
     material::Reflection,
     philox::Philox4x32_10,
     ray::Ray,
 };
+
+#[cfg(target_arch = "x86_64")]
+pub struct HardwareConfig {
+    pub cpu_feature_sse: bool,
+    pub cpu_feature_avx: bool,
+    pub cpu_feature_avx512f: bool,
+}
+
+#[cfg(not(any(target_arch = "x86_64")))]
+pub struct HardwareConfig {}
+
+impl HardwareConfig {
+    const fn new() -> Self {
+        #[cfg(target_arch = "x86_64")]
+        return Self {
+            cpu_feature_sse: false,
+            cpu_feature_avx: false,
+            cpu_feature_avx512f: false,
+        };
+
+        #[cfg(not(any(target_arch = "x86_64")))]
+        return Self {};
+    }
+
+    fn detect() -> Self {
+        #[cfg(target_arch = "x86_64")]
+        return Self {
+            cpu_feature_sse: std::arch::is_x86_feature_detected!("sse"),
+            cpu_feature_avx: std::arch::is_x86_feature_detected!("avx"),
+            cpu_feature_avx512f: std::arch::is_x86_feature_detected!("avx512f"),
+        };
+
+        #[cfg(not(any(target_arch = "x86_64")))]
+        return Self {};
+    }
+
+    pub fn get() -> &'static HardwareConfig {
+        static HWINFO: SyncUnsafeCell<HardwareConfig> = SyncUnsafeCell::new(HardwareConfig::new());
+        static HWINFO_INIT: Once = Once::new();
+
+        HWINFO_INIT.call_once(|| unsafe {
+            *HWINFO.get() = HardwareConfig::detect();
+        });
+
+        unsafe { &*HWINFO.get() }
+    }
+}
+
+unsafe fn static_config() {
+    bvh::static_config();
+}
+
+static STATIC_CONFIG: Once = Once::new();
 
 pub struct WorkerState {
     philox: Philox4x32_10,
@@ -79,6 +135,8 @@ pub struct RenderJob<'a> {
 }
 
 pub fn render(job: RenderJob<'_>, image: &mut Image) {
+    STATIC_CONFIG.call_once(|| unsafe { static_config() });
+
     let start_time = SystemTime::now();
 
     let image_width = image.width();
