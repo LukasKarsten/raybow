@@ -1,5 +1,3 @@
-#![feature(sync_unsafe_cell)]
-
 use std::{
     fs::File,
     io::BufWriter,
@@ -28,6 +26,7 @@ mod philox;
 mod ray;
 mod raybow;
 mod scene;
+mod sync_unsafe_cell;
 mod vector;
 
 enum OutputFormat {

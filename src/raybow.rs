@@ -1,10 +1,9 @@
 use std::{
-    cell::SyncUnsafeCell,
     io::Write,
     iter,
     sync::{
         atomic::{AtomicU32, Ordering},
-        Arc,
+        Arc, Once,
     },
     thread,
     time::{Duration, SystemTime},
@@ -15,12 +14,22 @@ use bumpalo::Bump;
 use crate::{
     camera::Camera,
     color::Color,
-    geometry::{bvh::Bvh, Object},
+    geometry::{
+        bvh::{self, Bvh},
+        Object,
+    },
     image::Image,
     material::Reflection,
     philox::Philox4x32_10,
     ray::Ray,
+    sync_unsafe_cell::SyncUnsafeCell,
 };
+
+unsafe fn static_config() {
+    bvh::static_config();
+}
+
+static STATIC_CONFIG: Once = Once::new();
 
 pub struct WorkerState {
     philox: Philox4x32_10,
@@ -79,6 +88,8 @@ pub struct RenderJob<'a> {
 }
 
 pub fn render(job: RenderJob<'_>, image: &mut Image) {
+    STATIC_CONFIG.call_once(|| unsafe { static_config() });
+
     let start_time = SystemTime::now();
 
     let image_width = image.width();

@@ -1,9 +1,10 @@
-use std::{alloc::Layout, arch::x86_64::*, ops::Range};
+use std::{alloc::Layout, ops::Range};
 
 use bumpalo::Bump;
 
 use crate::{
     ray::Ray,
+    sync_unsafe_cell::SyncUnsafeCell,
     vector::{Dimension, Vector, Vector3x8},
 };
 
@@ -73,6 +74,20 @@ impl<L: ObjectList<Object = O>, O> Bvh<L> {
     }
 }
 
+type IntersectionsTest = unsafe fn(Ray, Vector3x8, Vector3x8, Range<f32>) -> u8;
+
+static INTERSECTIONS_TEST: SyncUnsafeCell<IntersectionsTest> =
+    SyncUnsafeCell::new(intersections_generic);
+
+pub unsafe fn static_config() {
+    #[cfg(target_arch = "x86_64")]
+    if std::arch::is_x86_feature_detected!("avx") {
+        *INTERSECTIONS_TEST.get() = intersections_x86_avx;
+    } else if std::arch::is_x86_feature_detected!("sse") {
+        *INTERSECTIONS_TEST.get() = intersections_x86_sse;
+    }
+}
+
 impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
     fn hit(&self, ray: Ray, mut t_range: Range<f32>, arena: &Bump) -> Option<Hit> {
         let pending_nodes_cap = self.max_depth * 7 + 1;
@@ -86,6 +101,8 @@ impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
         let mut pending_nodes_len = 1;
 
         let mut nearest_hit = None;
+
+        let intersections_test = unsafe { *INTERSECTIONS_TEST.get() };
 
         loop {
             if pending_nodes_len == 0 {
@@ -111,15 +128,16 @@ impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
                 Node::Branch { idx, .. } => {
                     let branch = &self.branches[idx as usize];
 
-                    let mut mask =
-                        intersections(ray, branch.aabb_min, branch.aabb_max, t_range.clone());
+                    let mut intersections = unsafe {
+                        intersections_test(ray, branch.aabb_min, branch.aabb_max, t_range.clone())
+                    };
 
                     loop {
-                        let idx = mask.trailing_zeros();
+                        let idx = intersections.trailing_zeros();
                         if idx == u8::BITS {
                             break;
                         }
-                        mask &= !(1 << idx);
+                        intersections ^= 1 << idx;
                         let child = branch.children[idx as usize];
                         unsafe {
                             pending_nodes.add(pending_nodes_len).write(child);
@@ -136,18 +154,6 @@ impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
     fn bounding_box(&self) -> Aabb {
         self.bounding_box
     }
-}
-
-fn intersections(ray: Ray, aabb_min: Vector3x8, aabb_max: Vector3x8, t_range: Range<f32>) -> u8 {
-    #[cfg(target_arch = "x86_64")]
-    if std::arch::is_x86_feature_detected!("avx") {
-        return unsafe { intersections_x86_avx(ray, aabb_min, aabb_max, t_range) };
-    }
-    #[cfg(target_arch = "x86_64")]
-    if std::arch::is_x86_feature_detected!("sse") {
-        return unsafe { intersections_x86_sse(ray, aabb_min, aabb_max, t_range) };
-    }
-    intersections_generic(ray, aabb_min, aabb_max, t_range)
 }
 
 fn gamma(n: i32) -> f32 {
@@ -191,6 +197,7 @@ fn intersections_generic(
     intersections
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "sse")]
 unsafe fn intersections_x86_sse(
     ray: Ray,
@@ -198,6 +205,8 @@ unsafe fn intersections_x86_sse(
     aabb_max: Vector3x8,
     t_range: Range<f32>,
 ) -> u8 {
+    use std::arch::x86_64::*;
+
     let vel_rcp = 1.0 / ray.direction;
     let vel_rcp_x = _mm_set1_ps(vel_rcp.x());
     let vel_rcp_y = _mm_set1_ps(vel_rcp.y());
@@ -248,6 +257,7 @@ unsafe fn intersections_x86_sse(
     intersections
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
 unsafe fn intersections_x86_avx(
     ray: Ray,
@@ -255,6 +265,8 @@ unsafe fn intersections_x86_avx(
     aabb_max: Vector3x8,
     t_range: Range<f32>,
 ) -> u8 {
+    use std::arch::x86_64::*;
+
     let vel_rcp = 1.0 / ray.direction;
     let vel_rcp_x = _mm256_set1_ps(vel_rcp.x());
     let vel_rcp_y = _mm256_set1_ps(vel_rcp.y());
