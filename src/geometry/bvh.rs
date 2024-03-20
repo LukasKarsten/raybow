@@ -1,10 +1,10 @@
 use std::{alloc::Layout, ops::Range};
 
 use bumpalo::Bump;
+use ctor::ctor;
 
 use crate::{
     ray::Ray,
-    sync_unsafe_cell::SyncUnsafeCell,
     vector::{Dimension, Vector, Vector3x8},
 };
 
@@ -74,19 +74,22 @@ impl<L: ObjectList<Object = O>, O> Bvh<L> {
     }
 }
 
-type IntersectionsTest = unsafe fn(Ray, Vector3x8, Vector3x8, Range<f32>) -> u8;
+type IntersectionsTest = unsafe fn(Ray, &Vector3x8, &Vector3x8, Range<f32>) -> u8;
 
-static INTERSECTIONS_TEST: SyncUnsafeCell<IntersectionsTest> =
-    SyncUnsafeCell::new(intersections_generic);
+#[ctor]
+static INTERSECTIONS_TEST: IntersectionsTest = {
+    #[allow(unused_mut)]
+    let mut func: IntersectionsTest = intersections_generic;
 
-pub unsafe fn static_config() {
     #[cfg(target_arch = "x86_64")]
-    if std::arch::is_x86_feature_detected!("avx") {
-        *INTERSECTIONS_TEST.get() = intersections_x86_avx;
-    } else if std::arch::is_x86_feature_detected!("sse") {
-        *INTERSECTIONS_TEST.get() = intersections_x86_sse;
+    if is_x86_feature_detected!("avx") {
+        func = intersections_x86_avx;
+    } else if is_x86_feature_detected!("sse") {
+        func = intersections_x86_sse;
     }
-}
+
+    func
+};
 
 impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
     fn hit(&self, ray: Ray, mut t_range: Range<f32>, arena: &Bump) -> Option<Hit> {
@@ -101,8 +104,6 @@ impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
         let mut pending_nodes_len = 1;
 
         let mut nearest_hit = None;
-
-        let intersections_test = unsafe { *INTERSECTIONS_TEST.get() };
 
         loop {
             if pending_nodes_len == 0 {
@@ -129,7 +130,7 @@ impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
                     let branch = &self.branches[idx as usize];
 
                     let mut intersections = unsafe {
-                        intersections_test(ray, branch.aabb_min, branch.aabb_max, t_range.clone())
+                        INTERSECTIONS_TEST(ray, &branch.aabb_min, &branch.aabb_max, t_range.clone())
                     };
 
                     loop {
@@ -162,8 +163,8 @@ fn gamma(n: i32) -> f32 {
 
 fn intersections_generic(
     ray: Ray,
-    aabb_min: Vector3x8,
-    aabb_max: Vector3x8,
+    aabb_min: &Vector3x8,
+    aabb_max: &Vector3x8,
     t_range: Range<f32>,
 ) -> u8 {
     let mut intersections = 0;
@@ -201,8 +202,8 @@ fn intersections_generic(
 #[target_feature(enable = "sse")]
 unsafe fn intersections_x86_sse(
     ray: Ray,
-    aabb_min: Vector3x8,
-    aabb_max: Vector3x8,
+    aabb_min: &Vector3x8,
+    aabb_max: &Vector3x8,
     t_range: Range<f32>,
 ) -> u8 {
     use std::arch::x86_64::*;
@@ -261,8 +262,8 @@ unsafe fn intersections_x86_sse(
 #[target_feature(enable = "avx")]
 unsafe fn intersections_x86_avx(
     ray: Ray,
-    aabb_min: Vector3x8,
-    aabb_max: Vector3x8,
+    aabb_min: &Vector3x8,
+    aabb_max: &Vector3x8,
     t_range: Range<f32>,
 ) -> u8 {
     use std::arch::x86_64::*;
