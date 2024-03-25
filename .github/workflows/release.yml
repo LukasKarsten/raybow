@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Get the release version from the tag
-        if: env.VERSION == ''
+        if: env.VERSION == ""
         run: echo "VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
       - name: Show the version
         run: |
@@ -39,11 +39,11 @@ jobs:
 
   build-release:
     name: build-release
-    needs: ['create-release']
+    needs: [create-release]
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-latest", "windows-latest"]
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
