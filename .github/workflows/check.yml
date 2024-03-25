@@ -1,6 +1,16 @@
 name: Rust
 
-on: [push, pull_request]
+on:
+  push:
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '**.rs'
+  pull_request:
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '**.rs'
 
 env:
   CARGO_TERM_COLOR: always
