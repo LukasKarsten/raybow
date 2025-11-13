@@ -178,7 +178,7 @@ fn write_qoi(image: Image, path: &Path) -> Result<(), Box<dyn std::error::Error>
 }
 
 fn write_png(image: Image, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    use png::{AdaptiveFilterType, BitDepth, ColorType, Compression, SrgbRenderingIntent};
+    use png::{BitDepth, ColorType, Compression, SrgbRenderingIntent};
 
     let mut encoder = png::Encoder::new(
         BufWriter::new(File::create(path)?),
@@ -187,9 +187,8 @@ fn write_png(image: Image, path: &Path) -> Result<(), Box<dyn std::error::Error>
     );
     encoder.set_color(ColorType::Rgb);
     encoder.set_depth(BitDepth::Sixteen);
-    encoder.set_srgb(SrgbRenderingIntent::Perceptual);
-    encoder.set_adaptive_filter(AdaptiveFilterType::Adaptive);
-    encoder.set_compression(Compression::Best);
+    encoder.set_source_srgb(SrgbRenderingIntent::Perceptual);
+    encoder.set_compression(Compression::High);
 
     encoder.add_text_chunk(String::from("software"), String::from("raybow"))?;
 
