@@ -1,14 +1,14 @@
 use std::{collections::HashMap, fmt, path::Path, sync::Arc};
 
 use crate::{
-    geometry::{bvh::Bvh, Object, Sphere},
+    Camera, Color,
+    geometry::{Object, Sphere, bvh::Bvh},
     material::{Dialectric, DiffuseLight, Lambertian, Material, Metal},
     vector::Vector,
-    Camera, Color,
 };
 use serde::{
-    de::{Unexpected, Visitor},
     Deserialize, Deserializer,
+    de::{Unexpected, Visitor},
 };
 
 #[derive(Default, Clone, Copy, Deserialize)]

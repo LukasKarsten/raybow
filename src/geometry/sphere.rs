@@ -23,7 +23,7 @@ impl Sphere {
 }
 
 impl Object for Sphere {
-    fn hit(&self, ray: Ray, t_range: Range<f32>, _: &Bump) -> Option<Hit> {
+    fn hit(&self, ray: Ray, t_range: Range<f32>, _: &Bump) -> Option<Hit<'_>> {
         let oc = self.center - ray.origin;
         let tca = oc.dot(ray.direction);
         if tca < 0.0 {

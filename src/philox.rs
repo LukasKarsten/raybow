@@ -2,7 +2,7 @@
 pub struct Philox4x32_10(pub [u32; 2]);
 
 impl Philox4x32_10 {
-    pub fn gen(&self, mut ctr: [u32; 4]) -> [u32; 4] {
+    pub fn generate(&self, mut ctr: [u32; 4]) -> [u32; 4] {
         let mut key = self.0;
         for _ in 0..10 {
             round(&mut key, &mut ctr);
@@ -11,7 +11,8 @@ impl Philox4x32_10 {
     }
 
     pub fn gen_f32s(&self, ctr: [u32; 4]) -> [f32; 4] {
-        self.gen(ctr).map(|x| (x >> 8) as f32 * (f32::EPSILON / 2.))
+        self.generate(ctr)
+            .map(|x| (x >> 8) as f32 * (f32::EPSILON / 2.))
     }
 }
 

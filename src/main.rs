@@ -152,7 +152,7 @@ impl<'a> exr::image::write::channels::GetPixel for ImageGetPixelWrapper<'a> {
 }
 
 fn write_exr(image: Image, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    use exr::image::{write::WritableImage, Image as ExrImage, SpecificChannels};
+    use exr::image::{Image as ExrImage, SpecificChannels, write::WritableImage};
 
     let pixels = SpecificChannels::rgb(ImageGetPixelWrapper(&image));
 

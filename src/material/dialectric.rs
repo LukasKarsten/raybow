@@ -1,6 +1,6 @@
 use crate::{color::Color, geometry::Hit, ray::Ray, raybow::WorkerState};
 
-use super::{reflect, refract, Material, MaterialHitResult};
+use super::{Material, MaterialHitResult, reflect, refract};
 
 pub struct Dialectric {
     pub index: f32,

@@ -8,7 +8,7 @@ use crate::{
     vector::{Dimension, Vector, Vector3x8},
 };
 
-use super::{aabb::Aabb, Hit, Object, ObjectList};
+use super::{Hit, Object, ObjectList, aabb::Aabb};
 
 #[derive(Copy, Clone)]
 enum Node {
@@ -92,7 +92,7 @@ static INTERSECTIONS_TEST: IntersectionsTest = {
 };
 
 impl<L: ObjectList<Object = O> + Send + Sync, O> Object for Bvh<L> {
-    fn hit(&self, ray: Ray, mut t_range: Range<f32>, arena: &Bump) -> Option<Hit> {
+    fn hit(&self, ray: Ray, mut t_range: Range<f32>, arena: &Bump) -> Option<Hit<'_>> {
         let pending_nodes_cap = self.max_depth * 7 + 1;
         let pending_nodes = arena
             .alloc_layout(Layout::array::<Node>(pending_nodes_cap).unwrap())
@@ -206,56 +206,58 @@ unsafe fn intersections_x86_sse(
     aabb_max: &Vector3x8,
     t_range: Range<f32>,
 ) -> u8 {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    let vel_rcp = 1.0 / ray.direction;
-    let vel_rcp_x = _mm_set1_ps(vel_rcp.x());
-    let vel_rcp_y = _mm_set1_ps(vel_rcp.y());
-    let vel_rcp_z = _mm_set1_ps(vel_rcp.z());
+        let vel_rcp = 1.0 / ray.direction;
+        let vel_rcp_x = _mm_set1_ps(vel_rcp.x());
+        let vel_rcp_y = _mm_set1_ps(vel_rcp.y());
+        let vel_rcp_z = _mm_set1_ps(vel_rcp.z());
 
-    let origin_x = _mm_set1_ps(ray.origin.x());
-    let origin_y = _mm_set1_ps(ray.origin.y());
-    let origin_z = _mm_set1_ps(ray.origin.z());
+        let origin_x = _mm_set1_ps(ray.origin.x());
+        let origin_y = _mm_set1_ps(ray.origin.y());
+        let origin_z = _mm_set1_ps(ray.origin.z());
 
-    let t_start = _mm_set1_ps(t_range.start);
-    let t_end = _mm_set1_ps(t_range.end);
+        let t_start = _mm_set1_ps(t_range.start);
+        let t_end = _mm_set1_ps(t_range.end);
 
-    let mut intersections = 0;
+        let mut intersections = 0;
 
-    for off in (0..8).step_by(4) {
-        let aabb_min_x = _mm_load_ps(aabb_min.x().as_ptr().add(off));
-        let aabb_min_y = _mm_load_ps(aabb_min.y().as_ptr().add(off));
-        let aabb_min_z = _mm_load_ps(aabb_min.z().as_ptr().add(off));
+        for off in (0..8).step_by(4) {
+            let aabb_min_x = _mm_load_ps(aabb_min.x().as_ptr().add(off));
+            let aabb_min_y = _mm_load_ps(aabb_min.y().as_ptr().add(off));
+            let aabb_min_z = _mm_load_ps(aabb_min.z().as_ptr().add(off));
 
-        let aabb_max_x = _mm_load_ps(aabb_max.x().as_ptr().add(off));
-        let aabb_max_y = _mm_load_ps(aabb_max.y().as_ptr().add(off));
-        let aabb_max_z = _mm_load_ps(aabb_max.z().as_ptr().add(off));
+            let aabb_max_x = _mm_load_ps(aabb_max.x().as_ptr().add(off));
+            let aabb_max_y = _mm_load_ps(aabb_max.y().as_ptr().add(off));
+            let aabb_max_z = _mm_load_ps(aabb_max.z().as_ptr().add(off));
 
-        let t0_x = _mm_mul_ps(_mm_sub_ps(aabb_min_x, origin_x), vel_rcp_x);
-        let t0_y = _mm_mul_ps(_mm_sub_ps(aabb_min_y, origin_y), vel_rcp_y);
-        let t0_z = _mm_mul_ps(_mm_sub_ps(aabb_min_z, origin_z), vel_rcp_z);
+            let t0_x = _mm_mul_ps(_mm_sub_ps(aabb_min_x, origin_x), vel_rcp_x);
+            let t0_y = _mm_mul_ps(_mm_sub_ps(aabb_min_y, origin_y), vel_rcp_y);
+            let t0_z = _mm_mul_ps(_mm_sub_ps(aabb_min_z, origin_z), vel_rcp_z);
 
-        let t1_x = _mm_mul_ps(_mm_sub_ps(aabb_max_x, origin_x), vel_rcp_x);
-        let t1_y = _mm_mul_ps(_mm_sub_ps(aabb_max_y, origin_y), vel_rcp_y);
-        let t1_z = _mm_mul_ps(_mm_sub_ps(aabb_max_z, origin_z), vel_rcp_z);
+            let t1_x = _mm_mul_ps(_mm_sub_ps(aabb_max_x, origin_x), vel_rcp_x);
+            let t1_y = _mm_mul_ps(_mm_sub_ps(aabb_max_y, origin_y), vel_rcp_y);
+            let t1_z = _mm_mul_ps(_mm_sub_ps(aabb_max_z, origin_z), vel_rcp_z);
 
-        let mut tmin = t_start;
-        tmin = _mm_min_ps(_mm_max_ps(t0_x, tmin), _mm_max_ps(t1_x, tmin));
-        tmin = _mm_min_ps(_mm_max_ps(t0_y, tmin), _mm_max_ps(t1_y, tmin));
-        tmin = _mm_min_ps(_mm_max_ps(t0_z, tmin), _mm_max_ps(t1_z, tmin));
+            let mut tmin = t_start;
+            tmin = _mm_min_ps(_mm_max_ps(t0_x, tmin), _mm_max_ps(t1_x, tmin));
+            tmin = _mm_min_ps(_mm_max_ps(t0_y, tmin), _mm_max_ps(t1_y, tmin));
+            tmin = _mm_min_ps(_mm_max_ps(t0_z, tmin), _mm_max_ps(t1_z, tmin));
 
-        let mut tmax = t_end;
-        tmax = _mm_max_ps(_mm_min_ps(t0_x, tmax), _mm_min_ps(t1_x, tmax));
-        tmax = _mm_max_ps(_mm_min_ps(t0_y, tmax), _mm_min_ps(t1_y, tmax));
-        tmax = _mm_max_ps(_mm_min_ps(t0_z, tmax), _mm_min_ps(t1_z, tmax));
+            let mut tmax = t_end;
+            tmax = _mm_max_ps(_mm_min_ps(t0_x, tmax), _mm_min_ps(t1_x, tmax));
+            tmax = _mm_max_ps(_mm_min_ps(t0_y, tmax), _mm_min_ps(t1_y, tmax));
+            tmax = _mm_max_ps(_mm_min_ps(t0_z, tmax), _mm_min_ps(t1_z, tmax));
 
-        tmax = _mm_mul_ps(tmax, _mm_set1_ps(1.0 + 2.0 * gamma(3)));
-        let mask = _mm_cmp_ps(tmin, tmax, _CMP_LE_OQ);
+            tmax = _mm_mul_ps(tmax, _mm_set1_ps(1.0 + 2.0 * gamma(3)));
+            let mask = _mm_cmp_ps(tmin, tmax, _CMP_LE_OQ);
 
-        intersections |= (_mm_movemask_ps(mask) as u8) << off;
+            intersections |= (_mm_movemask_ps(mask) as u8) << off;
+        }
+
+        intersections
     }
-
-    intersections
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -266,47 +268,49 @@ unsafe fn intersections_x86_avx(
     aabb_max: &Vector3x8,
     t_range: Range<f32>,
 ) -> u8 {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    let vel_rcp = 1.0 / ray.direction;
-    let vel_rcp_x = _mm256_set1_ps(vel_rcp.x());
-    let vel_rcp_y = _mm256_set1_ps(vel_rcp.y());
-    let vel_rcp_z = _mm256_set1_ps(vel_rcp.z());
+        let vel_rcp = 1.0 / ray.direction;
+        let vel_rcp_x = _mm256_set1_ps(vel_rcp.x());
+        let vel_rcp_y = _mm256_set1_ps(vel_rcp.y());
+        let vel_rcp_z = _mm256_set1_ps(vel_rcp.z());
 
-    let origin_x = _mm256_set1_ps(ray.origin.x());
-    let origin_y = _mm256_set1_ps(ray.origin.y());
-    let origin_z = _mm256_set1_ps(ray.origin.z());
+        let origin_x = _mm256_set1_ps(ray.origin.x());
+        let origin_y = _mm256_set1_ps(ray.origin.y());
+        let origin_z = _mm256_set1_ps(ray.origin.z());
 
-    let aabb_min_x = _mm256_load_ps(aabb_min.x().as_ptr());
-    let aabb_min_y = _mm256_load_ps(aabb_min.y().as_ptr());
-    let aabb_min_z = _mm256_load_ps(aabb_min.z().as_ptr());
+        let aabb_min_x = _mm256_load_ps(aabb_min.x().as_ptr());
+        let aabb_min_y = _mm256_load_ps(aabb_min.y().as_ptr());
+        let aabb_min_z = _mm256_load_ps(aabb_min.z().as_ptr());
 
-    let aabb_max_x = _mm256_load_ps(aabb_max.x().as_ptr());
-    let aabb_max_y = _mm256_load_ps(aabb_max.y().as_ptr());
-    let aabb_max_z = _mm256_load_ps(aabb_max.z().as_ptr());
+        let aabb_max_x = _mm256_load_ps(aabb_max.x().as_ptr());
+        let aabb_max_y = _mm256_load_ps(aabb_max.y().as_ptr());
+        let aabb_max_z = _mm256_load_ps(aabb_max.z().as_ptr());
 
-    let t0_x = _mm256_mul_ps(_mm256_sub_ps(aabb_min_x, origin_x), vel_rcp_x);
-    let t0_y = _mm256_mul_ps(_mm256_sub_ps(aabb_min_y, origin_y), vel_rcp_y);
-    let t0_z = _mm256_mul_ps(_mm256_sub_ps(aabb_min_z, origin_z), vel_rcp_z);
+        let t0_x = _mm256_mul_ps(_mm256_sub_ps(aabb_min_x, origin_x), vel_rcp_x);
+        let t0_y = _mm256_mul_ps(_mm256_sub_ps(aabb_min_y, origin_y), vel_rcp_y);
+        let t0_z = _mm256_mul_ps(_mm256_sub_ps(aabb_min_z, origin_z), vel_rcp_z);
 
-    let t1_x = _mm256_mul_ps(_mm256_sub_ps(aabb_max_x, origin_x), vel_rcp_x);
-    let t1_y = _mm256_mul_ps(_mm256_sub_ps(aabb_max_y, origin_y), vel_rcp_y);
-    let t1_z = _mm256_mul_ps(_mm256_sub_ps(aabb_max_z, origin_z), vel_rcp_z);
+        let t1_x = _mm256_mul_ps(_mm256_sub_ps(aabb_max_x, origin_x), vel_rcp_x);
+        let t1_y = _mm256_mul_ps(_mm256_sub_ps(aabb_max_y, origin_y), vel_rcp_y);
+        let t1_z = _mm256_mul_ps(_mm256_sub_ps(aabb_max_z, origin_z), vel_rcp_z);
 
-    let mut tmin = _mm256_set1_ps(t_range.start);
-    tmin = _mm256_min_ps(_mm256_max_ps(t0_x, tmin), _mm256_max_ps(t1_x, tmin));
-    tmin = _mm256_min_ps(_mm256_max_ps(t0_y, tmin), _mm256_max_ps(t1_y, tmin));
-    tmin = _mm256_min_ps(_mm256_max_ps(t0_z, tmin), _mm256_max_ps(t1_z, tmin));
+        let mut tmin = _mm256_set1_ps(t_range.start);
+        tmin = _mm256_min_ps(_mm256_max_ps(t0_x, tmin), _mm256_max_ps(t1_x, tmin));
+        tmin = _mm256_min_ps(_mm256_max_ps(t0_y, tmin), _mm256_max_ps(t1_y, tmin));
+        tmin = _mm256_min_ps(_mm256_max_ps(t0_z, tmin), _mm256_max_ps(t1_z, tmin));
 
-    let mut tmax = _mm256_set1_ps(t_range.end);
-    tmax = _mm256_max_ps(_mm256_min_ps(t0_x, tmax), _mm256_min_ps(t1_x, tmax));
-    tmax = _mm256_max_ps(_mm256_min_ps(t0_y, tmax), _mm256_min_ps(t1_y, tmax));
-    tmax = _mm256_max_ps(_mm256_min_ps(t0_z, tmax), _mm256_min_ps(t1_z, tmax));
+        let mut tmax = _mm256_set1_ps(t_range.end);
+        tmax = _mm256_max_ps(_mm256_min_ps(t0_x, tmax), _mm256_min_ps(t1_x, tmax));
+        tmax = _mm256_max_ps(_mm256_min_ps(t0_y, tmax), _mm256_min_ps(t1_y, tmax));
+        tmax = _mm256_max_ps(_mm256_min_ps(t0_z, tmax), _mm256_min_ps(t1_z, tmax));
 
-    tmax = _mm256_mul_ps(tmax, _mm256_set1_ps(1.0 + 2.0 * gamma(3)));
-    let mask = _mm256_cmp_ps(tmin, tmax, _CMP_LE_OQ);
+        tmax = _mm256_mul_ps(tmax, _mm256_set1_ps(1.0 + 2.0 * gamma(3)));
+        let mask = _mm256_cmp_ps(tmin, tmax, _CMP_LE_OQ);
 
-    _mm256_movemask_ps(mask) as u8
+        _mm256_movemask_ps(mask) as u8
+    }
 }
 
 fn build(

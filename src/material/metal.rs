@@ -1,6 +1,6 @@
 use crate::{color::Color, geometry::Hit, ray::Ray, raybow::WorkerState};
 
-use super::{random_in_unit_sphere, reflect, Material, MaterialHitResult};
+use super::{Material, MaterialHitResult, random_in_unit_sphere, reflect};
 
 pub struct Metal {
     pub albedo: Color,

@@ -13,7 +13,7 @@ mod sphere;
 mod triangle;
 
 pub trait Object: Send + Sync {
-    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit>;
+    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit<'_>>;
 
     fn bounding_box(&self) -> Aabb;
 
@@ -24,7 +24,7 @@ pub trait Object: Send + Sync {
 }
 
 impl Object for Box<dyn Object> {
-    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit> {
+    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit<'_>> {
         self.as_ref().hit(ray, t_range, arena)
     }
 
@@ -34,7 +34,7 @@ impl Object for Box<dyn Object> {
 }
 
 impl Object for Arc<dyn Object> {
-    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit> {
+    fn hit(&self, ray: Ray, t_range: Range<f32>, arena: &Bump) -> Option<Hit<'_>> {
         self.as_ref().hit(ray, t_range, arena)
     }
 
@@ -47,7 +47,7 @@ impl Object for Arc<dyn Object> {
 pub trait ObjectList {
     type Object;
 
-    fn hit(&self, ray: Ray, t_range: Range<f32>, index: usize, arena: &Bump) -> Option<Hit>;
+    fn hit(&self, ray: Ray, t_range: Range<f32>, index: usize, arena: &Bump) -> Option<Hit<'_>>;
 
     fn bounding_box(&self, index: usize) -> Aabb;
 

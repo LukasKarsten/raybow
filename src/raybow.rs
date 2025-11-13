@@ -2,8 +2,8 @@ use std::{
     io::Write,
     iter,
     sync::{
-        atomic::{AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicU32, Ordering},
     },
     thread,
     time::{Duration, SystemTime},
@@ -14,7 +14,7 @@ use bumpalo::Bump;
 use crate::{
     camera::Camera,
     color::Color,
-    geometry::{bvh::Bvh, Object},
+    geometry::{Object, bvh::Bvh},
     image::Image,
     material::Reflection,
     philox::Philox4x32_10,

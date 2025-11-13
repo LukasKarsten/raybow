@@ -4,7 +4,7 @@ use bumpalo::Bump;
 
 use crate::{material::Material, ray::Ray, vector::Vector};
 
-use super::{aabb::Aabb, Hit, ObjectList};
+use super::{Hit, ObjectList, aabb::Aabb};
 
 pub struct TriangleMesh {
     triangles: Box<[Triangle]>,
@@ -43,7 +43,7 @@ impl TriangleMesh {
 impl ObjectList for TriangleMesh {
     type Object = Triangle;
 
-    fn hit(&self, ray: Ray, t_range: Range<f32>, index: usize, _: &Bump) -> Option<Hit> {
+    fn hit(&self, ray: Ray, t_range: Range<f32>, index: usize, _: &Bump) -> Option<Hit<'_>> {
         // https://jcgt.org/published/0002/01/05/paper.pdf
 
         let ray_dir = ray.direction;

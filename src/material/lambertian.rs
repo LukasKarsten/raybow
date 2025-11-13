@@ -1,6 +1,6 @@
 use crate::{color::Color, geometry::Hit, ray::Ray, raybow::WorkerState};
 
-use super::{random_unit_vector, Material, MaterialHitResult};
+use super::{Material, MaterialHitResult, random_unit_vector};
 
 pub struct Lambertian {
     pub albedo: Color,
