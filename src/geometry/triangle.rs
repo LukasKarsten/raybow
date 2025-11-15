@@ -14,7 +14,7 @@ pub struct TriangleMesh {
 
 impl TriangleMesh {
     pub fn new(vertices: Box<[f32]>, indices: Box<[u32]>, material: Arc<dyn Material>) -> Self {
-        assert!(indices.len() % 3 == 0);
+        assert!(indices.len().is_multiple_of(3));
 
         let triangles = bytemuck::cast_slice_box(indices);
 
